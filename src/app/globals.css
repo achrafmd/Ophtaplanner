@@ -1,38 +1,23 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* On force le thème clair même si le téléphone est en mode sombre */
+/* Thème clair forcé (même si l’iPhone est en mode sombre) */
 :root {
-    color-scheme: light;
-    --background: #f3f4f6; /* gris clair type bg-slate-100 */
-    --foreground: #020617; /* texte très foncé type slate-950 */
+    --background: #f3f4f6; /* gris clair */
+    --foreground: #111827; /* texte gris foncé */
 }
 
-/* Mapping avec Tailwind v4 inline theme */
-@theme inline {
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --font-sans: var(--font-geist-sans);
-    --font-mono: var(--font-geist-mono);
-}
+/* On ignore complètement prefers-color-scheme pour garder un thème clair lisible */
+/* Si tu veux un vrai dark mode plus tard, on le fera avec un bouton "mode sombre". */
 
-/* Style global de la page */
 body {
-    margin: 0;
-    min-height: 100vh;
     background: var(--background);
     color: var(--foreground);
-    font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* Petites normalisations utiles */
-a {
-    color: inherit;
-    text-decoration: none;
-}
-
-button,
-input,
-select,
-textarea {
-    font: inherit;
+/* Petites améliorations visuelles générales */
+button {
+    cursor: pointer;
 }

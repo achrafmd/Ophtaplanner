@@ -9,6 +9,8 @@ import {
     query,
     where,
     getDocs,
+    orderBy,
+    doc,
     getDoc,
 } from "firebase/firestore";
 import { startOfWeek, addDays, parseISO, formatISO } from "date-fns";
