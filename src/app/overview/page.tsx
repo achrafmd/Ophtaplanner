@@ -13,44 +13,59 @@ import {
     doc,
     getDoc,
 } from "firebase/firestore";
-import { startOfWeek, addDays, parseISO, formatISO } from "date-fns";
-
-type Profile = { id: string; fullName: string; role?: string };
+import { addDays, formatISO, startOfWeek } from "date-fns";
 
 type Entry = {
-    id: string;
     userId: string;
-    date: string;      // yyyy-MM-dd
+    date: string; // "YYYY-MM-DD"
     jour: string;
-    periode: string;
+    periode: string; // "Matin" | "Apres-midi" | "Matin & Apres-midi"
     activite: string;
 };
 
-type Mode = "day" | "week";
+type PeriodeKey = "Matin" | "Apres-midi" | "Matin & Apres-midi";
 
-const isoDate = (d: Date) =>
-    formatISO(d, {
-        representation: "date",
-    });
+type Grouped =
+    | {
+        [date: string]: {
+            [periode in PeriodeKey]?: {
+                [activite: string]: string[]; // liste des résidents
+            };
+        };
+    }
 
-const PERIODE_ORDER: Record<string, number> = {
-    "Matin": 0,
-    "Après-midi": 1,
-    "Matin & Après-midi": 2,
-};
+const PERIODES: { key: PeriodeKey; label: string }[] = [
+    { key: "Matin", label: "Matin" },
+    { key: "Apres-midi", label: "Après-midi" },
+    { key: "Matin & Apres-midi", label: "Matin & Après-midi" },
+];
+
+const JOURS_FR = [
+    "Dimanche",
+    "Lundi",
+    "Mardi",
+    "Mercredi",
+    "Jeudi",
+    "Vendredi",
+    "Samedi",
+];
 
 export default function OverviewPage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [isAdmin, setIsAdmin] = useState(false);
-    const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-    const [mode, setMode] = useState<Mode>("week");
-    const [selectedDate, setSelectedDate] = useState(() => isoDate(new Date()));
-    const [entries, setEntries] = useState<Entry[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [err, setErr] = useState("");
 
-    // connexion
+    const [profiles, setProfiles] = useState<Record<string, string>>({});
+    const [mode, setMode] = useState<"jour" | "semaine">("semaine");
+    const [selectedDate, setSelectedDate] = useState(
+        () => new Date().toISOString().slice(0, 10)
+    );
+
+    const [grouped, setGrouped] = useState<Grouped>({});
+    const [loading, setLoading] = useState(true);
+    const [err, setErr] = useState<string>("");
+
+    // --- Auth ---
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, (u) => {
             if (!u) {
@@ -62,189 +77,142 @@ export default function OverviewPage() {
         return () => unsub();
     }, [router]);
 
-    // profil + profils des résidents
+    // --- Récupérer profil + liste des résidents ---
     useEffect(() => {
         if (!user) return;
+
         (async () => {
-            setLoading(true);
             try {
-                const profileRef = doc(db, "profiles", user.uid);
-                const profileSnap = await getDoc(profileRef);
+                const meRef = doc(db, "profiles", user.uid);
+                const meSnap = await getDoc(meRef);
 
                 let admin = false;
+                let map: Record<string, string> = {};
 
-                if (profileSnap.exists()) {
-                    const data = profileSnap.data() as any;
+                if (meSnap.exists()) {
+                    const data = meSnap.data() as any;
                     if (data.role === "admin") admin = true;
+                    map[user.uid] = data.fullName || user.email || "Moi";
+                } else {
+                    map[user.uid] = user.email || "Moi";
+                }
+
+                if (admin) {
+                    const allSnap = await getDocs(collection(db, "profiles"));
+                    map = {};
+                    allSnap.forEach((d) => {
+                        const data = d.data() as any;
+                        map[d.id] = data.fullName || d.id;
+                    });
                 }
 
                 setIsAdmin(admin);
-
-                const map: Record<string, Profile> = {};
-
-                if (admin) {
-                    // tous les résidents
-                    const allSnap = await getDocs(collection(db, "profiles"));
-                    allSnap.forEach((d) => {
-                        const data = d.data() as any;
-                        map[d.id] = {
-                            id: d.id,
-                            fullName: data.fullName || d.id,
-                            role: data.role,
-                        };
-                    });
-                } else {
-                    // seulement moi
-                    if (profileSnap.exists()) {
-                        const data = profileSnap.data() as any;
-                        map[user.uid] = {
-                            id: user.uid,
-                            fullName: data.fullName || user.email || "Moi",
-                            role: data.role,
-                        };
-                    } else {
-                        map[user.uid] = {
-                            id: user.uid,
-                            fullName: user.email || "Moi",
-                        };
-                    }
-                }
-
                 setProfiles(map);
             } catch (e) {
                 console.error(e);
-            } finally {
-                setLoading(false);
             }
         })();
     }, [user]);
 
-    // calcul du range de dates en fonction du mode
-    const { fromDate, toDate, weekLabel } = useMemo(() => {
-        const base = parseISO(selectedDate);
-        if (mode === "day") {
-            const d = isoDate(base);
-            return { fromDate: d, toDate: d, weekLabel: d };
-        } else {
-            const start = startOfWeek(base, { weekStartsOn: 1 });
-            const end = addDays(start, 5);
-            return {
-                fromDate: isoDate(start),
-                toDate: isoDate(end),
-                weekLabel: `${isoDate(start)} au ${isoDate(end)}`,
-            };
-        }
-    }, [mode, selectedDate]);
+    // --- Dates de la semaine sélectionnée ---
+    const weekDays = useMemo(() => {
+        const ref = new Date(selectedDate);
+        const monday = startOfWeek(ref, { weekStartsOn: 1 });
+        return Array.from({ length: 6 }, (_, i) => addDays(monday, i));
+    }, [selectedDate]);
 
-    // chargement des entrées
+    // --- Charger les entrées groupées ---
     useEffect(() => {
-        if (!user) return;
+        if (!user || !Object.keys(profiles).length) return;
+
         (async () => {
             setLoading(true);
             setErr("");
-            try {
-                const qParts = [
-                    where("date", ">=", fromDate),
-                    where("date", "<=", toDate),
-                ];
 
+            try {
+                const entriesRef = collection(db, "entries");
+
+                const constraints: any[] = [];
                 if (!isAdmin) {
-                    // les résidents voient uniquement leurs propres activités
-                    qParts.push(where("userId", "==", user.uid));
+                    constraints.push(where("userId", "==", user.uid));
                 }
 
-                const qRef = query(collection(db, "entries"), ...qParts);
+                if (mode === "jour") {
+                    constraints.push(where("date", "==", selectedDate));
+                } else {
+                    const from = formatISO(weekDays[0], { representation: "date" });
+                    const to = formatISO(weekDays[5], { representation: "date" });
+                    constraints.push(where("date", ">=", from));
+                    constraints.push(where("date", "<=", to));
+                }
+
+                const qRef = query(entriesRef, ...constraints, orderBy("date", "asc"));
                 const snap = await getDocs(qRef);
 
-                const list: Entry[] = snap.docs.map((d) => {
-                    const data = d.data() as any;
-                    return {
-                        id: d.id,
-                        userId: data.userId,
-                        date: data.date,
-                        jour: data.jour,
-                        periode: data.periode,
-                        activite: data.activite,
-                    };
+                const res: Grouped = {};
+                snap.forEach((docSnap) => {
+                    const d = docSnap.data() as any as Entry;
+                    const dateKey = d.date;
+
+                    if (!res[dateKey]) {
+                        res[dateKey] = {} as any;
+                    }
+                    const periodeKey = d.periode as PeriodeKey;
+
+                    if (!res[dateKey][periodeKey]) {
+                        res[dateKey][periodeKey] = {};
+                    }
+                    const perGroup = res[dateKey][periodeKey]!;
+
+                    if (!perGroup[d.activite]) perGroup[d.activite] = [];
+                    const fullName = profiles[d.userId] || d.userId;
+                    if (!perGroup[d.activite].includes(fullName)) {
+                        perGroup[d.activite].push(fullName);
+                    }
                 });
 
-                setEntries(list);
+                setGrouped(res);
             } catch (e: any) {
-                setErr(String(e.message || e));
+                console.error(e);
+                setErr(e.message || String(e));
             } finally {
                 setLoading(false);
             }
         })();
-    }, [user, isAdmin, fromDate, toDate]);
+    }, [user, profiles, isAdmin, mode, selectedDate, weekDays]);
 
     if (!user) return null;
 
-    // ---------------------------
-    // Agrégation pour l’affichage
-    // ---------------------------
-
-    if (isAdmin) {
-        // ADMIN : regrouper par activité, avec liste des résidents
-
-        type ActivityGroup = {
-            date: string;
-            jour: string;
-            periode: string;
-            activite: string;
-            residents: string[];
-        };
-
-        const groupsMap: Record<string, ActivityGroup> = {};
-
-        for (const e of entries) {
-            const profile = profiles[e.userId];
-            const name = profile?.fullName || "Résident inconnu";
-
-            const key = `${e.date}|${e.periode}|${e.activite}`;
-
-            if (!groupsMap[key]) {
-                groupsMap[key] = {
-                    date: e.date,
-                    jour: e.jour,
-                    periode: e.periode,
-                    activite: e.activite,
-                    residents: [],
-                };
-            }
-            if (!groupsMap[key].residents.includes(name)) {
-                groupsMap[key].residents.push(name);
-            }
+    const handlePrint = () => {
+        if (typeof window !== "undefined") {
+            window.print();
         }
+    };
 
-        const groups = Object.values(groupsMap).sort((a, b) => {
-            if (a.date !== b.date) return a.date.localeCompare(b.date);
-            const pa = PERIODE_ORDER[a.periode] ?? 99;
-            const pb = PERIODE_ORDER[b.periode] ?? 99;
-            if (pa !== pb) return pa - pb;
-            return a.activite.localeCompare(b.activite);
-        });
+    const datesToRender =
+        mode === "jour"
+            ? [selectedDate]
+            : weekDays.map((d) => formatISO(d, { representation: "date" }));
 
-        // pour le mode semaine, on regroupe les activités par date
-        const groupedByDate: Record<string, ActivityGroup[]> = {};
-        for (const g of groups) {
-            if (!groupedByDate[g.date]) groupedByDate[g.date] = [];
-            groupedByDate[g.date].push(g);
-        }
+    const hasData = datesToRender.some((d) => grouped[d]);
 
-        return (
-            <div className="py-5 space-y-4">
-                {/* Header */}
-                <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div>
-                        <h1 className="text-2xl font-semibold tracking-tight">
-                            Vue générale
-                        </h1>
-                        <p className="text-sm text-slate-500">
-                            Activités des résidents ({mode === "day" ? "jour" : "semaine"})
-                        </p>
-                    </div>
+    return (
+        <div className="space-y-4">
+            {/* HEADER */}
+            <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between no-print">
+                <div>
+                    <h1 className="text-2xl font-semibold tracking-tight">
+                        Vue générale
+                    </h1>
+                    <p className="text-sm text-slate-500">
+                        {isAdmin
+                            ? "Activités de tous les résidents"
+                            : "Récapitulatif de vos activités"}
+                    </p>
+                </div>
 
-                    <div className="flex flex-col items-end gap-2 text-sm">
+                <div className="flex flex-col items-end gap-2 text-sm">
+                    <div className="flex gap-2">
                         <button
                             className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
                             onClick={() => router.push("/week")}
@@ -261,256 +229,134 @@ export default function OverviewPage() {
                             Se déconnecter
                         </button>
                     </div>
-                </header>
+                    {isAdmin && (
+                        <div className="text-xs text-slate-500">Mode administrateur</div>
+                    )}
+                </div>
+            </header>
 
-                {/* Filtres */}
-                <div className="bg-white rounded-2xl shadow-sm border p-4 space-y-3">
-                    <div className="grid gap-3 md:grid-cols-2 items-center">
-                        <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-600">
-                                Date
-                            </label>
-                            <input
-                                type="date"
-                                className="mt-1 w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                                value={selectedDate}
-                                onChange={(e) => setSelectedDate(e.target.value)}
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <span className="text-xs font-medium text-slate-600">
+            {/* BARRE DE CONTROLES */}
+            <section className="bg-white border rounded-2xl shadow-sm p-4 space-y-3 no-print">
+                <div className="grid gap-3 md:grid-cols-2 md:items-end">
+                    <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-600">
+                            Date de référence
+                        </label>
+                        <input
+                            type="date"
+                            className="w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                        />
+                        <p className="text-[11px] text-slate-500">
+                            En mode &quot;Semaine&quot;, la semaine va du lundi au samedi
+                            autour de cette date.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col gap-3 items-start md:items-end">
+                        <div>
+                            <span className="block text-xs font-medium text-slate-600 mb-1">
                                 Mode d&apos;affichage
                             </span>
-                            <div className="flex rounded-full bg-slate-100 p-1 text-sm">
+                            <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs">
                                 <button
-                                    className={`flex-1 rounded-full px-3 py-1 ${mode === "day"
-                                            ? "bg-white shadow-sm"
-                                            : "text-slate-500 hover:text-slate-700"
+                                    className={`px-3 py-1 rounded-full ${mode === "jour"
+                                            ? "bg-white shadow-sm text-slate-900"
+                                            : "text-slate-500"
                                         }`}
-                                    onClick={() => setMode("day")}
+                                    onClick={() => setMode("jour")}
                                 >
                                     Jour
                                 </button>
                                 <button
-                                    className={`flex-1 rounded-full px-3 py-1 ${mode === "week"
-                                            ? "bg-white shadow-sm"
-                                            : "text-slate-500 hover:text-slate-700"
+                                    className={`px-3 py-1 rounded-full ${mode === "semaine"
+                                            ? "bg-white shadow-sm text-slate-900"
+                                            : "text-slate-500"
                                         }`}
-                                    onClick={() => setMode("week")}
+                                    onClick={() => setMode("semaine")}
                                 >
                                     Semaine
                                 </button>
                             </div>
-                            {mode === "week" && (
-                                <div className="text-xs text-slate-500 mt-1">
-                                    Semaine du {weekLabel}
-                                </div>
-                            )}
                         </div>
+
+                        <button
+                            onClick={handlePrint}
+                            className="rounded-full border px-4 py-2 text-xs sm:text-sm font-medium bg-slate-900 text-white hover:bg-slate-800"
+                        >
+                            Exporter en PDF (paysage)
+                        </button>
                     </div>
                 </div>
-
-                {err && (
-                    <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-                        {err}
-                    </div>
-                )}
-
-                {/* Résultats */}
-                <div className="bg-white rounded-2xl shadow-sm border p-4">
-                    {loading ? (
-                        <div className="text-sm text-slate-500">Chargement...</div>
-                    ) : groups.length === 0 ? (
-                        <div className="text-sm text-slate-500">
-                            Aucune activité cochée pour cette période.
-                        </div>
-                    ) : mode === "day" ? (
-                        // MODE JOUR : toutes les activités du jour
-                        <div className="space-y-2">
-                            {groups.map((g) => (
-                                <div
-                                    key={`${g.date}|${g.periode}|${g.activite}`}
-                                    className="rounded-xl bg-slate-50 border px-3 py-2 text-sm"
-                                >
-                                    <div className="font-medium">
-                                        {g.periode} — {g.activite}
-                                    </div>
-                                    <div className="text-xs text-slate-600 mt-1">
-                                        {g.residents.join(", ")}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        // MODE SEMAINE : regroupé par date
-                        <div className="space-y-4">
-                            {Object.keys(groupedByDate)
-                                .sort()
-                                .map((date) => (
-                                    <section
-                                        key={date}
-                                        className="rounded-2xl border bg-slate-50 px-3 py-3"
-                                    >
-                                        <div className="font-semibold text-sm mb-2">
-                                            {groupedByDate[date][0]?.jour} — {date}
-                                        </div>
-                                        <div className="space-y-1">
-                                            {groupedByDate[date].map((g) => (
-                                                <div
-                                                    key={`${g.date}|${g.periode}|${g.activite}`}
-                                                    className="text-sm"
-                                                >
-                                                    <span className="font-medium">
-                                                        {g.periode} — {g.activite} :
-                                                    </span>{" "}
-                                                    <span className="text-slate-700">
-                                                        {g.residents.join(", ")}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </section>
-                                ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    }
-
-    // ------------------------
-    // Vue pour un résident seul
-    // ------------------------
-    // regrouper par date + période + activité
-    const myEntriesByDate: Record<string, Entry[]> = {};
-    for (const e of entries) {
-        if (!myEntriesByDate[e.date]) myEntriesByDate[e.date] = [];
-        myEntriesByDate[e.date].push(e);
-    }
-
-    return (
-        <div className="py-5 space-y-4">
-            <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
-                        Vue générale
-                    </h1>
-                    <p className="text-sm text-slate-500">Mes activités</p>
-                </div>
-
-                <div className="flex flex-col items-end gap-2 text-sm">
-                    <button
-                        className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
-                        onClick={() => router.push("/week")}
-                    >
-                        Retour à ma semaine
-                    </button>
-                    <button
-                        className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
-                        onClick={async () => {
-                            await signOut(auth);
-                            router.replace("/login");
-                        }}
-                    >
-                        Se déconnecter
-                    </button>
-                </div>
-            </header>
-
-            <div className="bg-white rounded-2xl shadow-sm border p-4 space-y-3">
-                <div className="grid gap-3 md:grid-cols-2 items-center">
-                    <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">Date</label>
-                        <input
-                            type="date"
-                            className="mt-1 w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-1">
-                        <span className="text-xs font-medium text-slate-600">
-                            Mode d&apos;affichage
-                        </span>
-                        <div className="flex rounded-full bg-slate-100 p-1 text-sm">
-                            <button
-                                className={`flex-1 rounded-full px-3 py-1 ${mode === "day"
-                                        ? "bg-white shadow-sm"
-                                        : "text-slate-500 hover:text-slate-700"
-                                    }`}
-                                onClick={() => setMode("day")}
-                            >
-                                Jour
-                            </button>
-                            <button
-                                className={`flex-1 rounded-full px-3 py-1 ${mode === "week"
-                                        ? "bg-white shadow-sm"
-                                        : "text-slate-500 hover:text-slate-700"
-                                    }`}
-                                onClick={() => setMode("week")}
-                            >
-                                Semaine
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            </section>
 
             {err && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                <div className="no-print text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
                     {err}
                 </div>
             )}
 
-            <div className="bg-white rounded-2xl shadow-sm border p-4">
+            {/* CONTENU PRINCIPAL */}
+            <section className="bg-white border rounded-2xl shadow-sm p-4 print:p-2">
                 {loading ? (
-                    <div className="text-sm text-slate-500">Chargement...</div>
-                ) : entries.length === 0 ? (
+                    <div className="text-sm text-slate-500">Chargement…</div>
+                ) : !hasData ? (
                     <div className="text-sm text-slate-500">
-                        Aucune activité cochée pour cette période.
-                    </div>
-                ) : mode === "day" ? (
-                    <div className="space-y-1">
-                        {entries
-                            .filter((e) => e.date === selectedDate)
-                            .sort((a, b) => {
-                                const pa = PERIODE_ORDER[a.periode] ?? 99;
-                                const pb = PERIODE_ORDER[b.periode] ?? 99;
-                                if (pa !== pb) return pa - pb;
-                                return a.activite.localeCompare(b.activite);
-                            })
-                            .map((e) => (
-                                <div key={e.id} className="text-sm">
-                                    {e.periode} — {e.activite}
-                                </div>
-                            ))}
+                        Aucune activité enregistrée pour cette période.
                     </div>
                 ) : (
-                    <div className="space-y-4">
-                        {Object.keys(myEntriesByDate)
-                            .sort()
-                            .map((date) => (
-                                <section key={date} className="space-y-1">
-                                    <div className="font-semibold text-sm">
-                                        {myEntriesByDate[date][0]?.jour} — {date}
-                                    </div>
-                                    {myEntriesByDate[date]
-                                        .sort((a, b) => {
-                                            const pa = PERIODE_ORDER[a.periode] ?? 99;
-                                            const pb = PERIODE_ORDER[b.periode] ?? 99;
-                                            if (pa !== pb) return pa - pb;
-                                            return a.activite.localeCompare(b.activite);
-                                        })
-                                        .map((e) => (
-                                            <div key={e.id} className="text-sm">
-                                                {e.periode} — {e.activite}
+                    <div className="space-y-6">
+                        {datesToRender.map((dateStr) => {
+                            const dayData = grouped[dateStr];
+                            if (!dayData) return null;
+
+                            const d = new Date(dateStr + "T00:00:00");
+                            const labelJour = `${JOURS_FR[d.getDay()]} — ${dateStr}`;
+
+                            return (
+                                <article key={dateStr} className="space-y-3">
+                                    <h2 className="font-semibold text-sm sm:text-base border-b pb-1">
+                                        {labelJour}
+                                    </h2>
+
+                                    {PERIODES.map((p) => {
+                                        const perData = (dayData as any)[p.key];
+                                        if (!perData || !Object.keys(perData).length) return null;
+
+                                        return (
+                                            <div key={p.key} className="space-y-1">
+                                                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                    {p.label}
+                                                </div>
+                                                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                                    {Object.entries(perData).map(
+                                                        ([activite, residents]) => (
+                                                            <div
+                                                                key={activite}
+                                                                className="rounded-xl border bg-slate-50 px-3 py-2 text-xs sm:text-sm"
+                                                            >
+                                                                <div className="font-medium text-slate-900">
+                                                                    {activite}
+                                                                </div>
+                                                                <div className="mt-1 text-[11px] sm:text-xs text-slate-700 space-y-0.5">
+                                                                    {(residents as string[]).map((name) => (
+                                                                        <div key={name}>• {name}</div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
                                             </div>
-                                        ))}
-                                </section>
-                            ))}
+                                        );
+                                    })}
+                                </article>
+                            );
+                        })}
                     </div>
                 )}
-            </div>
+            </section>
         </div>
     );
 }
