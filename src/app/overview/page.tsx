@@ -4,40 +4,29 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import {
-    collection,
-    query,
-    where,
-    getDocs,
-    orderBy,
-    doc,
-    getDoc,
-} from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { addDays, formatISO, startOfWeek } from "date-fns";
 
 type Entry = {
     userId: string;
-    date: string; // "YYYY-MM-DD"
+    date: string;   // "YYYY-MM-DD"
     jour: string;
-    periode: string; // "Matin" | "Apres-midi" | "Matin & Apres-midi"
+    periode: string; // "Matin" | "Après-midi" | "Matin & Après-midi"
     activite: string;
 };
 
-type PeriodeKey = "Matin" | "Apres-midi" | "Matin & Apres-midi";
+type Grouped = Record<
+    string, // date
+    Record<
+        string, // période
+        Record<string, string[]> // activité -> liste de résidents
+    >
+>;
 
-type Grouped =
-    | {
-        [date: string]: {
-            [periode in PeriodeKey]?: {
-                [activite: string]: string[]; // liste des résidents
-            };
-        };
-    }
-
-const PERIODES: { key: PeriodeKey; label: string }[] = [
+const PERIODES = [
     { key: "Matin", label: "Matin" },
-    { key: "Apres-midi", label: "Après-midi" },
-    { key: "Matin & Apres-midi", label: "Matin & Après-midi" },
+    { key: "Après-midi", label: "Après-midi" },
+    { key: "Matin & Après-midi", label: "Matin & Après-midi" },
 ];
 
 const JOURS_FR = [
@@ -63,7 +52,7 @@ export default function OverviewPage() {
 
     const [grouped, setGrouped] = useState<Grouped>({});
     const [loading, setLoading] = useState(true);
-    const [err, setErr] = useState<string>("");
+    const [err, setErr] = useState("");
 
     // --- Auth ---
     useEffect(() => {
@@ -77,7 +66,7 @@ export default function OverviewPage() {
         return () => unsub();
     }, [router]);
 
-    // --- Récupérer profil + liste des résidents ---
+    // --- Profils & rôle admin ---
     useEffect(() => {
         if (!user) return;
 
@@ -114,25 +103,24 @@ export default function OverviewPage() {
         })();
     }, [user]);
 
-    // --- Dates de la semaine sélectionnée ---
+    // --- Semaine autour de la date sélectionnée ---
     const weekDays = useMemo(() => {
         const ref = new Date(selectedDate);
         const monday = startOfWeek(ref, { weekStartsOn: 1 });
         return Array.from({ length: 6 }, (_, i) => addDays(monday, i));
     }, [selectedDate]);
 
-    // --- Charger les entrées groupées ---
+    // --- Charger depuis Firestore & regrouper par date / période / activité ---
     useEffect(() => {
         if (!user || !Object.keys(profiles).length) return;
 
         (async () => {
             setLoading(true);
             setErr("");
-
             try {
                 const entriesRef = collection(db, "entries");
-
                 const constraints: any[] = [];
+
                 if (!isAdmin) {
                     constraints.push(where("userId", "==", user.uid));
                 }
@@ -146,28 +134,29 @@ export default function OverviewPage() {
                     constraints.push(where("date", "<=", to));
                 }
 
-                const qRef = query(entriesRef, ...constraints, orderBy("date", "asc"));
+                const qRef = query(entriesRef, ...constraints);
                 const snap = await getDocs(qRef);
 
                 const res: Grouped = {};
+
                 snap.forEach((docSnap) => {
                     const d = docSnap.data() as any as Entry;
                     const dateKey = d.date;
+                    const periodeKey = d.periode; // ex: "Matin", "Après-midi", "Matin & Après-midi"
+                    const activite = d.activite;
+                    const fullName = profiles[d.userId] || d.userId;
 
                     if (!res[dateKey]) {
-                        res[dateKey] = {} as any;
+                        res[dateKey] = {};
                     }
-                    const periodeKey = d.periode as PeriodeKey;
-
                     if (!res[dateKey][periodeKey]) {
                         res[dateKey][periodeKey] = {};
                     }
-                    const perGroup = res[dateKey][periodeKey]!;
-
-                    if (!perGroup[d.activite]) perGroup[d.activite] = [];
-                    const fullName = profiles[d.userId] || d.userId;
-                    if (!perGroup[d.activite].includes(fullName)) {
-                        perGroup[d.activite].push(fullName);
+                    if (!res[dateKey][periodeKey][activite]) {
+                        res[dateKey][periodeKey][activite] = [];
+                    }
+                    if (!res[dateKey][periodeKey][activite].includes(fullName)) {
+                        res[dateKey][periodeKey][activite].push(fullName);
                     }
                 });
 
@@ -183,6 +172,7 @@ export default function OverviewPage() {
 
     if (!user) return null;
 
+    // --- UI helpers ---
     const handlePrint = () => {
         if (typeof window !== "undefined") {
             window.print();
@@ -196,19 +186,17 @@ export default function OverviewPage() {
 
     const hasData = datesToRender.some((d) => grouped[d]);
 
+    const subtitle = isAdmin
+        ? "Vue générale des activités de tous les résidents"
+        : "Récapitulatif de vos activités";
+
     return (
-        <div className="space-y-4">
+        <div className="py-5 space-y-4">
             {/* HEADER */}
-            <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between no-print">
+            <header className="no-print flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
-                        Vue générale
-                    </h1>
-                    <p className="text-sm text-slate-500">
-                        {isAdmin
-                            ? "Activités de tous les résidents"
-                            : "Récapitulatif de vos activités"}
-                    </p>
+                    <h1 className="text-2xl font-semibold tracking-tight">Vue générale</h1>
+                    <p className="text-sm text-slate-500">{subtitle}</p>
                 </div>
 
                 <div className="flex flex-col items-end gap-2 text-sm">
@@ -230,13 +218,13 @@ export default function OverviewPage() {
                         </button>
                     </div>
                     {isAdmin && (
-                        <div className="text-xs text-slate-500">Mode administrateur</div>
+                        <span className="text-xs text-slate-500">Mode administrateur</span>
                     )}
                 </div>
             </header>
 
             {/* BARRE DE CONTROLES */}
-            <section className="bg-white border rounded-2xl shadow-sm p-4 space-y-3 no-print">
+            <section className="no-print bg-white border rounded-2xl shadow-sm p-4 space-y-3">
                 <div className="grid gap-3 md:grid-cols-2 md:items-end">
                     <div className="space-y-2">
                         <label className="text-xs font-medium text-slate-600">
@@ -249,8 +237,8 @@ export default function OverviewPage() {
                             onChange={(e) => setSelectedDate(e.target.value)}
                         />
                         <p className="text-[11px] text-slate-500">
-                            En mode &quot;Semaine&quot;, la semaine va du lundi au samedi
-                            autour de cette date.
+                            En mode &quot;Semaine&quot;, la période va du lundi au samedi autour de
+                            cette date.
                         </p>
                     </div>
 
@@ -263,7 +251,7 @@ export default function OverviewPage() {
                                 <button
                                     className={`px-3 py-1 rounded-full ${mode === "jour"
                                             ? "bg-white shadow-sm text-slate-900"
-                                            : "text-slate-500"
+                                            : "text-slate-500 hover:text-slate-700"
                                         }`}
                                     onClick={() => setMode("jour")}
                                 >
@@ -272,7 +260,7 @@ export default function OverviewPage() {
                                 <button
                                     className={`px-3 py-1 rounded-full ${mode === "semaine"
                                             ? "bg-white shadow-sm text-slate-900"
-                                            : "text-slate-500"
+                                            : "text-slate-500 hover:text-slate-700"
                                         }`}
                                     onClick={() => setMode("semaine")}
                                 >
@@ -315,18 +303,25 @@ export default function OverviewPage() {
                             const labelJour = `${JOURS_FR[d.getDay()]} — ${dateStr}`;
 
                             return (
-                                <article key={dateStr} className="space-y-3">
-                                    <h2 className="font-semibold text-sm sm:text-base border-b pb-1">
-                                        {labelJour}
+                                <article
+                                    key={dateStr}
+                                    className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3 print:border-none print:bg-white"
+                                >
+                                    <h2 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white text-xs">
+                                            {d.getDate()}
+                                        </span>
+                                        <span>{labelJour}</span>
                                     </h2>
 
                                     {PERIODES.map((p) => {
-                                        const perData = (dayData as any)[p.key];
+                                        const perData = dayData[p.key];
                                         if (!perData || !Object.keys(perData).length) return null;
 
                                         return (
                                             <div key={p.key} className="space-y-1">
-                                                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
                                                     {p.label}
                                                 </div>
                                                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -334,14 +329,19 @@ export default function OverviewPage() {
                                                         ([activite, residents]) => (
                                                             <div
                                                                 key={activite}
-                                                                className="rounded-xl border bg-slate-50 px-3 py-2 text-xs sm:text-sm"
+                                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                                                             >
-                                                                <div className="font-medium text-slate-900">
+                                                                <div className="font-medium text-slate-900 mb-1">
                                                                     {activite}
                                                                 </div>
-                                                                <div className="mt-1 text-[11px] sm:text-xs text-slate-700 space-y-0.5">
+                                                                <div className="flex flex-wrap gap-1 text-[11px] sm:text-xs text-slate-700">
                                                                     {(residents as string[]).map((name) => (
-                                                                        <div key={name}>• {name}</div>
+                                                                        <span
+                                                                            key={name}
+                                                                            className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5"
+                                                                        >
+                                                                            {name}
+                                                                        </span>
                                                                     ))}
                                                                 </div>
                                                             </div>
