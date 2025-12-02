@@ -4,19 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import {
-    collection,
-    query,
-    where,
-    getDocs,
-    doc,
-    getDoc,
-} from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { addDays, formatISO, startOfWeek } from "date-fns";
 
 type Entry = {
     userId: string;
-    date: string; // "YYYY-MM-DD"
+    date: string;   // "YYYY-MM-DD"
     jour: string;
     periode: string; // "Matin" | "Après-midi" | "Matin & Après-midi"
     activite: string;
@@ -149,7 +142,7 @@ export default function OverviewPage() {
                 snap.forEach((docSnap) => {
                     const d = docSnap.data() as any as Entry;
                     const dateKey = d.date;
-                    const periodeKey = d.periode; // "Matin", "Après-midi", "Matin & Après-midi"
+                    const periodeKey = d.periode; // ex: "Matin", "Après-midi", "Matin & Après-midi"
                     const activite = d.activite;
                     const fullName = profiles[d.userId] || d.userId;
 
@@ -194,62 +187,69 @@ export default function OverviewPage() {
     const hasData = datesToRender.some((d) => grouped[d]);
 
     const subtitle = isAdmin
-        ? "Vue globale des activités de tous les résidents"
+        ? "Vue générale des activités de tous les résidents"
         : "Récapitulatif de vos activités";
 
     return (
-        <div className="py-6 space-y-5 md:space-y-6">
-            {/* BANNIÈRE HAUT - STYLE MÉDICAL */}
-            <div className="no-print rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-600 text-white text-xl font-semibold">
-                        {/* petite croix médicale stylisée */}
-                        +
-                    </div>
-                    <div>
-                        <h1 className="text-xl md:text-2xl font-semibold text-slate-900 tracking-tight">
-                            OphtaPlanner – Vue générale
-                        </h1>
-                        <p className="text-xs md:text-sm text-sky-900/80">{subtitle}</p>
-                    </div>
+        <div className="py-5 space-y-4">
+            {/* HEADER */}
+            <header className="no-print flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h1 className="text-2xl font-semibold tracking-tight">Vue générale</h1>
+                    <p className="text-sm text-slate-500">{subtitle}</p>
                 </div>
-                {isAdmin && (
-                    <div className="flex items-center gap-2 self-start md:self-auto">
-                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700 border border-emerald-100">
-                            ● Mode administrateur
-                        </span>
+
+                <div className="flex flex-col items-end gap-2 text-sm">
+                    <div className="flex gap-2">
+                        <button
+                            className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
+                            onClick={() => router.push("/week")}
+                        >
+                            Retour à ma semaine
+                        </button>
+                        <button
+                            className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
+                            onClick={async () => {
+                                await signOut(auth);
+                                router.replace("/login");
+                            }}
+                        >
+                            Se déconnecter
+                        </button>
                     </div>
-                )}
-            </div>
+                    {isAdmin && (
+                        <span className="text-xs text-slate-500">Mode administrateur</span>
+                    )}
+                </div>
+            </header>
 
             {/* BARRE DE CONTROLES */}
-            <section className="no-print bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-4 md:px-5 md:py-5 space-y-4">
-                <div className="grid gap-4 md:grid-cols-2 md:items-end">
+            <section className="no-print bg-white border rounded-2xl shadow-sm p-4 space-y-3">
+                <div className="grid gap-3 md:grid-cols-2 md:items-end">
                     <div className="space-y-2">
-                        <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                        <label className="text-xs font-medium text-slate-600">
                             Date de référence
                         </label>
                         <input
                             type="date"
-                            className="w-full rounded-2xl border border-slate-300 px-3 py-2.5 text-sm md:text-base focus:outline-none focus:ring-2 focus:ring-sky-500/70 focus:border-sky-500 bg-slate-50"
+                            className="w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
                         />
-                        <p className="text-[11px] text-slate-500 leading-snug">
-                            En mode <span className="font-medium">Semaine</span>, la période
-                            s&apos;étend du <span className="font-medium">lundi au samedi</span>{" "}
-                            incluant cette date.
+                        <p className="text-[11px] text-slate-500">
+                            En mode &quot;Semaine&quot;, la période va du lundi au samedi autour de
+                            cette date.
                         </p>
                     </div>
 
                     <div className="flex flex-col gap-3 items-start md:items-end">
                         <div>
-                            <span className="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-1">
+                            <span className="block text-xs font-medium text-slate-600 mb-1">
                                 Mode d&apos;affichage
                             </span>
-                            <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs md:text-sm">
+                            <div className="inline-flex rounded-full bg-slate-100 p-1 text-xs">
                                 <button
-                                    className={`px-4 py-1.5 md:py-2 rounded-full transition ${mode === "jour"
+                                    className={`px-3 py-1 rounded-full ${mode === "jour"
                                             ? "bg-white shadow-sm text-slate-900"
                                             : "text-slate-500 hover:text-slate-700"
                                         }`}
@@ -258,7 +258,7 @@ export default function OverviewPage() {
                                     Jour
                                 </button>
                                 <button
-                                    className={`px-4 py-1.5 md:py-2 rounded-full transition ${mode === "semaine"
+                                    className={`px-3 py-1 rounded-full ${mode === "semaine"
                                             ? "bg-white shadow-sm text-slate-900"
                                             : "text-slate-500 hover:text-slate-700"
                                         }`}
@@ -269,29 +269,12 @@ export default function OverviewPage() {
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
-                            <button
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm md:text-base font-medium text-slate-800 shadow-sm hover:bg-slate-50"
-                                onClick={() => router.push("/week")}
-                            >
-                                ← Ma semaine
-                            </button>
-                            <button
-                                onClick={handlePrint}
-                                className="inline-flex items-center gap-2 rounded-full bg-sky-700 px-4 py-2.5 text-xs sm:text-sm md:text-base font-medium text-white shadow-sm hover:bg-sky-800 active:scale-[0.99] transition"
-                            >
-                                🖨️ Export PDF (paysage)
-                            </button>
-                            <button
-                                className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-rose-50 px-4 py-2.5 text-xs sm:text-sm md:text-base font-medium text-rose-700 hover:bg-rose-100"
-                                onClick={async () => {
-                                    await signOut(auth);
-                                    router.replace("/login");
-                                }}
-                            >
-                                Se déconnecter
-                            </button>
-                        </div>
+                        <button
+                            onClick={handlePrint}
+                            className="rounded-full border px-4 py-2 text-xs sm:text-sm font-medium bg-slate-900 text-white hover:bg-slate-800"
+                        >
+                            Exporter en PDF (paysage)
+                        </button>
                     </div>
                 </div>
             </section>
@@ -303,7 +286,7 @@ export default function OverviewPage() {
             )}
 
             {/* CONTENU PRINCIPAL */}
-            <section className="bg-white border border-slate-200 rounded-2xl shadow-sm px-3 py-4 md:px-5 md:py-6 print:p-2">
+            <section className="bg-white border rounded-2xl shadow-sm p-4 print:p-2">
                 {loading ? (
                     <div className="text-sm text-slate-500">Chargement…</div>
                 ) : !hasData ? (
@@ -311,7 +294,7 @@ export default function OverviewPage() {
                         Aucune activité enregistrée pour cette période.
                     </div>
                 ) : (
-                    <div className="space-y-6 md:space-y-7">
+                    <div className="space-y-6">
                         {datesToRender.map((dateStr) => {
                             const dayData = grouped[dateStr];
                             if (!dayData) return null;
@@ -322,30 +305,23 @@ export default function OverviewPage() {
                             return (
                                 <article
                                     key={dateStr}
-                                    className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-3 md:p-4 print:border-none print:bg-white"
+                                    className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/60 p-3 print:border-none print:bg-white"
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-600 text-white text-sm font-semibold">
+                                    <h2 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white text-xs">
                                             {d.getDate()}
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <h2 className="font-semibold text-sm sm:text-base text-slate-900">
-                                                {labelJour}
-                                            </h2>
-                                            <span className="text-[11px] text-slate-500">
-                                                Résumé des équipes par activité et période
-                                            </span>
-                                        </div>
-                                    </div>
+                                        </span>
+                                        <span>{labelJour}</span>
+                                    </h2>
 
                                     {PERIODES.map((p) => {
                                         const perData = dayData[p.key];
                                         if (!perData || !Object.keys(perData).length) return null;
 
                                         return (
-                                            <div key={p.key} className="space-y-2 mt-1">
-                                                <div className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800 border border-sky-100">
-                                                    <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                                            <div key={p.key} className="space-y-1">
+                                                <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
                                                     {p.label}
                                                 </div>
                                                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -353,12 +329,12 @@ export default function OverviewPage() {
                                                         ([activite, residents]) => (
                                                             <div
                                                                 key={activite}
-                                                                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs sm:text-sm shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
+                                                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
                                                             >
-                                                                <div className="font-semibold text-slate-900 mb-1.5">
+                                                                <div className="font-medium text-slate-900 mb-1">
                                                                     {activite}
                                                                 </div>
-                                                                <div className="flex flex-wrap gap-1.5 text-[11px] sm:text-xs text-slate-700">
+                                                                <div className="flex flex-wrap gap-1 text-[11px] sm:text-xs text-slate-700">
                                                                     {(residents as string[]).map((name) => (
                                                                         <span
                                                                             key={name}
