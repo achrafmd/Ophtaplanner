@@ -25,13 +25,9 @@ const PERIODES = [
 
 const JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 
-type Profile = {
-  id: string;
-  fullName: string;
-  phone?: string;
-  email?: string;
-};
+type Profile = { id: string; fullName: string };
 
+// petite fonction utilitaire pour être SÛR d'avoir toujours yyyy-MM-dd
 const isoDate = (d: Date) =>
   formatISO(d, {
     representation: "date",
@@ -44,23 +40,25 @@ export default function WeekPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
 
-  const [refDate, setRefDate] = useState(() => isoDate(new Date()));
+  const [refDate, setRefDate] = useState(() => isoDate(new Date())); // n’importe quel jour de la semaine
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [info, setInfo] = useState("");
   const [err, setErr] = useState("");
 
+  // lundi de la semaine en cours
   const weekStart = useMemo(
     () => startOfWeek(parseISO(refDate), { weekStartsOn: 1 }),
     [refDate]
   );
 
+  // Lundi → Samedi
   const weekDays = useMemo(
     () => Array.from({ length: 6 }, (_, i) => addDays(weekStart, i)),
     [weekStart]
   );
 
-  // Auth
+  // connexion
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -72,7 +70,7 @@ export default function WeekPage() {
     return () => unsub();
   }, [router]);
 
-  // Profil + liste résidents
+  // profil + liste des résidents (TOUJOURS tous les résidents pour l’affichage)
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -82,29 +80,25 @@ export default function WeekPage() {
         const profileSnap = await getDoc(profileRef);
 
         let admin = false;
-        let fullName = "Moi";
+        let myFullName = "Moi";
 
         if (profileSnap.exists()) {
           const data = profileSnap.data() as any;
           if (data.role === "admin") admin = true;
-          if (data.fullName) fullName = data.fullName;
+          if (data.fullName) myFullName = data.fullName;
         }
 
         setIsAdmin(admin);
 
-        let profs: Profile[] = [{ id: user.uid, fullName }];
+        const allSnap = await getDocs(collection(db, "profiles"));
+        let profs: Profile[] = allSnap.docs.map((d) => ({
+          id: d.id,
+          fullName: (d.data() as any).fullName || d.id,
+        }));
 
-        if (admin) {
-          const allSnap = await getDocs(collection(db, "profiles"));
-          profs = allSnap.docs.map((d) => {
-            const data = d.data() as any;
-            return {
-              id: d.id,
-              fullName: data.fullName || d.id,
-              phone: data.phone,
-              email: data.email,
-            };
-          });
+        // au cas où mon profil n'est pas dans la collection
+        if (!profs.find((p) => p.id === user.uid)) {
+          profs.push({ id: user.uid, fullName: myFullName });
         }
 
         profs.sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -118,15 +112,15 @@ export default function WeekPage() {
     })();
   }, [user]);
 
-  // Charger les entrées de la semaine
+  // charge les activités cochées pour la semaine / résident choisi
   useEffect(() => {
     if (!user || !targetUserId) return;
     (async () => {
       setLoading(true);
       setErr("");
       try {
-        const from = isoDate(weekDays[0]);
-        const to = isoDate(weekDays[5]);
+        const from = isoDate(weekDays[0]); // lundi
+        const to = isoDate(weekDays[5]); // samedi
         const qRef = query(
           collection(db, "entries"),
           where("userId", "==", targetUserId),
@@ -155,6 +149,13 @@ export default function WeekPage() {
 
   const saveAll = async () => {
     if (!user || !targetUserId) return;
+
+    // sécurité : un résident simple ne peut enregistrer que son propre planning
+    if (!isAdmin && targetUserId !== user.uid) {
+      setErr("Vous ne pouvez enregistrer que vos propres activités.");
+      return;
+    }
+
     setLoading(true);
     setInfo("");
     setErr("");
@@ -163,6 +164,7 @@ export default function WeekPage() {
       const from = isoDate(weekDays[0]);
       const to = isoDate(weekDays[5]);
 
+      // on efface d’abord tout ce qui existe pour cette semaine / résident
       const qRef = query(
         collection(db, "entries"),
         where("userId", "==", targetUserId),
@@ -172,6 +174,7 @@ export default function WeekPage() {
       const snap = await getDocs(qRef);
       snap.forEach((d) => batch.delete(d.ref));
 
+      // puis on recrée à partir des cases cochées
       for (let i = 0; i < weekDays.length; i++) {
         const dateObj = weekDays[i];
         const dateStr = isoDate(dateObj);
@@ -223,14 +226,14 @@ export default function WeekPage() {
     setRefDate(isoDate(newRef));
   };
 
+  const canEdit = isAdmin || targetUserId === user.uid;
+
   return (
     <div className="py-5 space-y-4">
       {/* Header */}
       <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            OphtaPlanner
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">OphtaPlanner</h1>
           <p className="text-sm text-slate-500">Mes activités – semaine</p>
         </div>
 
@@ -238,24 +241,16 @@ export default function WeekPage() {
           <div className="flex gap-2">
             <button
               className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
-              onClick={() => router.push("/")}
-            >
-              Calendrier
-            </button>
-            <button
-              className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
               onClick={() => router.push("/overview")}
             >
               Vue générale
             </button>
-            {isAdmin && (
-              <button
-                className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
-                onClick={() => router.push("/residents")}
-              >
-                Fiches résidents
-              </button>
-            )}
+            <button
+              className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
+              onClick={() => router.push("/residents")}
+            >
+              Résidents
+            </button>
             <button
               className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
               onClick={async () => {
@@ -267,15 +262,14 @@ export default function WeekPage() {
             </button>
           </div>
           {isAdmin && (
-            <div className="text-right text-xs text-slate-500">
-              Mode admin
-            </div>
+            <div className="text-right text-xs text-slate-500">Mode admin</div>
           )}
         </div>
       </header>
 
-      {/* Filtres haut */}
+      {/* Filtres haut : semaine + résident */}
       <div className="grid gap-3 md:grid-cols-2">
+        {/* navigation semaine */}
         <div className="bg-white rounded-2xl shadow-sm border p-4 space-y-3">
           <div className="text-xs font-medium text-slate-600">
             Semaine du {weekLabelFrom} au {weekLabelTo}
@@ -296,26 +290,27 @@ export default function WeekPage() {
           </div>
         </div>
 
+        {/* résident */}
         <div className="bg-white rounded-2xl shadow-sm border p-4 space-y-2">
-          <label className="text-xs font-medium text-slate-600">
-            Résident
-          </label>
-          {isAdmin ? (
-            <select
-              className="mt-1 w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-              value={targetUserId || ""}
-              onChange={(e) => setTargetUserId(e.target.value)}
-            >
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.fullName}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="mt-1 text-sm font-medium text-slate-800">
-              {currentProfileName}
-            </div>
+          <label className="text-xs font-medium text-slate-600">Résident</label>
+
+          <select
+            className="mt-1 w-full rounded-xl border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            value={targetUserId || ""}
+            onChange={(e) => setTargetUserId(e.target.value)}
+          >
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.fullName}
+              </option>
+            ))}
+          </select>
+
+          {!isAdmin && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              Vous pouvez consulter le planning de tous les résidents, mais
+              n&apos;enregistrer que vos propres activités.
+            </p>
           )}
         </div>
       </div>
@@ -346,6 +341,9 @@ export default function WeekPage() {
                     <h2 className="font-semibold text-sm sm:text-base">
                       {jour} — {dateStr}
                     </h2>
+                    <span className="text-[11px] text-slate-400">
+                      {currentProfileName}
+                    </span>
                   </div>
                   {PERIODES.map((periode) => {
                     const acts = PLANNING[jour]?.[periode.key] || [];
@@ -368,6 +366,7 @@ export default function WeekPage() {
                                   className="h-4 w-4 rounded border-slate-400"
                                   checked={!!checked[k]}
                                   onChange={() => toggle(k)}
+                                  disabled={!canEdit}
                                 />
                                 <span className="truncate">{act}</span>
                               </label>
@@ -384,9 +383,13 @@ export default function WeekPage() {
               <button
                 className="w-full sm:w-auto rounded-full bg-blue-600 text-white px-5 py-2 text-sm font-medium shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 onClick={saveAll}
-                disabled={loading}
+                disabled={loading || !canEdit}
               >
-                {loading ? "Enregistrement..." : "Enregistrer la semaine"}
+                {loading
+                  ? "Enregistrement..."
+                  : canEdit
+                  ? "Enregistrer la semaine"
+                  : "Modification réservée à ce résident / admin"}
               </button>
             </div>
           </div>
