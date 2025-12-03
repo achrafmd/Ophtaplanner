@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
   collection,
@@ -20,7 +20,6 @@ import {
   type CategoryKey,
 } from "../../../../../lib/activityCategories";
 
-// Pour retrouver le nom du jour dans PLANNING
 const JOURS_FR = [
   "Dimanche",
   "Lundi",
@@ -67,15 +66,14 @@ const CATEGORY_META: Record<
 
 type CheckedMap = Record<string, boolean>; // "Matin|CS infectieuse" => true
 
-export default function CategoryPage(props: any) {
+export default function CategoryPage() {
   const router = useRouter();
+  const params = useParams<{ date?: string; category?: string }>();
+
   const [user, setUser] = useState<any>(null);
 
-  // Récupération sûre des params
-  const params = (props as any).params || {};
-  const date: string = typeof params.date === "string" ? params.date : "";
-  const categoryParam: string =
-    typeof params.category === "string" ? params.category : "consultations";
+  const date: string = (params?.date as string) || "";
+  const categoryParam: string = (params?.category as string) || "consultations";
 
   const categoryKey: CategoryKey = ([
     "consultations",
@@ -101,7 +99,6 @@ export default function CategoryPage(props: any) {
     return () => unsub();
   }, [router]);
 
-  // Date affichée
   const jsDate = date ? new Date(date + "T00:00:00") : new Date();
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -132,7 +129,7 @@ export default function CategoryPage(props: any) {
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
 
-  // Charger les cases déjà cochées pour ce jour / catégorie / user
+  // Charger les cases déjà cochées
   useEffect(() => {
     if (!user || !date) return;
 
@@ -186,7 +183,7 @@ export default function CategoryPage(props: any) {
     try {
       const batch = writeBatch(db);
 
-      // 1) supprimer toutes les entrées de cette catégorie pour ce jour
+      // supprimer toutes les entrées de cette catégorie pour ce jour
       const entriesRef = collection(db, "entries");
       const qRef = query(
         entriesRef,
@@ -203,7 +200,7 @@ export default function CategoryPage(props: any) {
         }
       });
 
-      // 2) recréer selon les cases cochées
+      // recréer selon les cases cochées
       PERIODES.forEach((periode) => {
         const acts = activitiesByPeriode[periode] || [];
         acts.forEach((activite) => {
@@ -294,7 +291,7 @@ export default function CategoryPage(props: any) {
             </div>
           </div>
 
-          {/* Activités à cocher */}
+          {/* Activités */}
           {loading ? (
             <p className="text-xs text-slate-500">Chargement…</p>
           ) : (
