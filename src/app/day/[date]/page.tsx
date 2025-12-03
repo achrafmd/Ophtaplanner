@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../../../lib/firebase";
 
@@ -41,15 +41,12 @@ const CATEGORIES = [
   },
 ];
 
-export default function DayPage({
-  params,
-}: {
-  params: { date: string };
-}) {
+export default function DayPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-
+  const params = useParams<{ date: string }>(); // 🔹 récupère [date] depuis l’URL
   const date = params?.date ?? "";
+
+  const [user, setUser] = useState<any>(null);
 
   // Auth
   useEffect(() => {
@@ -65,6 +62,7 @@ export default function DayPage({
 
   if (!user) return null;
 
+  // Joli format FR basé sur LA DATE DE L’URL
   const jsDate = date ? new Date(date + "T00:00:00") : new Date();
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
