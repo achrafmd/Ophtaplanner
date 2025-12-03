@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "../../../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
   collection,
@@ -13,18 +12,21 @@ import {
   writeBatch,
   doc,
 } from "firebase/firestore";
+
+import { auth, db } from "../../../../../lib/firebase";
 import { PLANNING } from "../../../../../lib/planning";
 import {
   ACTIVITY_CATEGORY,
   CategoryKey,
 } from "../../../../../lib/activityCategories";
 
-// mêmes périodes que dans la vue semaine
 const PERIODES = [
-  { key: "Matin", label: "Matin" },
-  { key: "Après-midi", label: "Après-midi" },
-  { key: "Matin & Après-midi", label: "Matin & Après-midi" },
+  { key: "Matin" as const, label: "Matin" },
+  { key: "Après-midi" as const, label: "Après-midi" },
+  { key: "Matin & Après-midi" as const, label: "Matin & Après-midi" },
 ];
+
+type PeriodeKey = (typeof PERIODES)[number]["key"];
 
 const JOURS_FR = [
   "Dimanche",
@@ -36,34 +38,65 @@ const JOURS_FR = [
   "Samedi",
 ];
 
-type PeriodeKey = (typeof PERIODES)[number]["key"];
+type CheckedMap = Record<string, boolean>; // "Matin|CS infectieuse" => true
 
 export default function CategoryPage(props: any) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
 
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
-  const [info, setInfo] = useState("");
-  const [err, setErr] = useState("");
-
-  // params dynamiques
   const params = (props as any).params || {};
   const date: string = typeof params.date === "string" ? params.date : "";
   const categoryParam: string =
     typeof params.category === "string" ? params.category : "consultations";
 
-  const catKey: CategoryKey = ([
+  const VALID_CATS: CategoryKey[] = [
     "consultations",
     "bloc",
     "service",
     "garde",
     "exploration",
-  ].includes(categoryParam)
+  ];
+
+  const catKey: CategoryKey = (VALID_CATS.includes(
+    categoryParam as CategoryKey
+  )
     ? categoryParam
     : "consultations") as CategoryKey;
 
-  // métadonnées d’affichage pour chaque catégorie
+  const [checked, setChecked] = useState<CheckedMap>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const [info, setInfo] = useState("");
+
+  // ---------- Auth ----------
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        router.replace("/login");
+      } else {
+        setUser(u);
+      }
+    });
+    return () => unsub();
+  }, [router]);
+
+  if (!user) return null;
+
+  // ---------- Date / labels ----------
+  const jsDate = date ? new Date(date + "T00:00:00") : new Date();
+  const prettyDate = jsDate.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+
+  const jourName = JOURS_FR[jsDate.getDay()];
+  const jourPlanning =
+    jourName in PLANNING ? jourName : ("Lundi" as keyof typeof PLANNING);
+
+  // ---------- Métadonnées de catégorie ----------
   const CATEGORY_META: Record<
     CategoryKey,
     { label: string; description: string; accent: string }
@@ -76,8 +109,7 @@ export default function CategoryPage(props: any) {
     },
     bloc: {
       label: "Bloc opératoire",
-      description:
-        "Bloc, 2ème/3ème salle, HDJ, petite chirurgie, programme opératoire…",
+      description: "Bloc, 2ème/3ème salle, HDJ, petite chirurgie…",
       accent: "bg-sky-500",
     },
     service: {
@@ -100,63 +132,35 @@ export default function CategoryPage(props: any) {
 
   const meta = CATEGORY_META[catKey];
 
-  // Auth
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        router.replace("/login");
-      } else {
-        setUser(u);
-      }
-    });
-    return () => unsub();
-  }, [router]);
-
-  if (!user) return null;
-
-  // date jolie + jour PLANNING
-  const jsDate = useMemo(
-    () => (date ? new Date(date + "T00:00:00") : new Date()),
-    [date]
-  );
-
-  const prettyDate = jsDate.toLocaleDateString("fr-FR", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
-
-  const jourPlanning = JOURS_FR[jsDate.getDay()]; // ex "Mercredi"
-
-  // activités de ce jour / catégorie, regroupées par période
+  // ---------- Activités possibles pour ce jour + catégorie ----------
   const activitiesByPeriode: Record<PeriodeKey, string[]> = useMemo(() => {
     const res: Record<PeriodeKey, string[]> = {
-      Matin: [],
+      "Matin": [],
       "Après-midi": [],
       "Matin & Après-midi": [],
     };
 
-    const dayBlock = (PLANNING as any)[jourPlanning] as any;
-    if (!dayBlock) return res;
+    const planningJour = (PLANNING as any)[jourPlanning] || {};
 
-    (PERIODES as { key: PeriodeKey; label: string }[]).forEach((p) => {
-      const allActs: string[] = (dayBlock?.[p.key] as string[]) || [];
-      res[p.key] = allActs.filter(
-        (act) => ACTIVITY_CATEGORY[act] === catKey
+    PERIODES.forEach((p) => {
+      const acts: string[] = planningJour[p.key] || [];
+      res[p.key] = acts.filter(
+        (a) => ACTIVITY_CATEGORY[a] && ACTIVITY_CATEGORY[a] === catKey
       );
     });
 
     return res;
   }, [jourPlanning, catKey]);
 
-  // charger depuis Firestore les cases déjà cochées pour cette date + catégorie
+  // ---------- Charger depuis Firestore ----------
   useEffect(() => {
     if (!user || !date) return;
 
     (async () => {
+      setLoading(true);
       setErr("");
       setInfo("");
+
       try {
         const qRef = query(
           collection(db, "entries"),
@@ -165,13 +169,14 @@ export default function CategoryPage(props: any) {
         );
         const snap = await getDocs(qRef);
 
-        const map: Record<string, boolean> = {};
+        const map: CheckedMap = {};
+
         snap.forEach((docSnap) => {
           const d = docSnap.data() as any;
           const cat = ACTIVITY_CATEGORY[d.activite];
           if (cat === catKey) {
-            const key = `${d.periode}|${d.activite}`;
-            map[key] = true;
+            const k = `${d.periode}|${d.activite}`;
+            map[k] = true;
           }
         });
 
@@ -179,68 +184,61 @@ export default function CategoryPage(props: any) {
       } catch (e: any) {
         console.error(e);
         setErr(e.message || String(e));
+      } finally {
+        setLoading(false);
       }
     })();
   }, [user, date, catKey]);
 
-  const toggle = (periode: string, activite: string) => {
-    const key = `${periode}|${activite}`;
+  // ---------- Helpers ----------
+  const toggle = (periode: PeriodeKey, act: string) => {
+    const key = `${periode}|${act}`;
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSave = async () => {
-  if (!user || !date) return;
-  setSaving(true);
-  setErr("");
-  setInfo("");
+    if (!user || !date) return;
+    setSaving(true);
+    setErr("");
+    setInfo("");
 
-  try {
-    const batch = writeBatch(db);
+    try {
+      const batch = writeBatch(db);
 
-    // 1) supprimer toutes les entrées de cette catégorie pour ce jour
-    const qRef = query(
-      collection(db, "entries"),
-      where("userId", "==", user.uid),
-      where("date", "==", date)
-    );
-    const snap = await getDocs(qRef);
-    snap.forEach((docSnap) => {
-      const d = docSnap.data() as any;
-      const cat = ACTIVITY_CATEGORY[d.activite];
-      if (cat === catKey) {
-        batch.delete(docSnap.ref);
-      }
-    });
-
-    // 2) recréer ce qui est coché
-    (PERIODES as { key: PeriodeKey; label: string }[]).forEach((p) => {
-      const acts = activitiesByPeriode[p.key] || [];
-      acts.forEach((act) => {
-        const key = `${p.key}|${act}`;
-        if (checked[key]) {
-          const ref = doc(collection(db, "entries"));
-          batch.set(ref, {
-            userId: user.uid,
-            date,
-            jour: jourPlanning,
-            periode: p.key,
-            activite: act,
-            medecins: "",
-            createdAt: new Date(),
-          });
+      // 1) supprimer toutes les entrées de cette catégorie pour ce jour
+      const qRef = query(
+        collection(db, "entries"),
+        where("userId", "==", user.uid),
+        where("date", "==", date)
+      );
+      const snap = await getDocs(qRef);
+      snap.forEach((docSnap) => {
+        const d = docSnap.data() as any;
+        const cat = ACTIVITY_CATEGORY[d.activite];
+        if (cat === catKey) {
+          batch.delete(docSnap.ref);
         }
       });
-    });
 
-    await batch.commit();
-    setInfo("Activités enregistrées pour cette catégorie.");
-  } catch (e: any) {
-    console.error(e);
-    setErr(e.message || String(e));
-  } finally {
-    setSaving(false);
-  }
-};
+      // 2) recréer ce qui est coché
+      PERIODES.forEach((p) => {
+        const acts = activitiesByPeriode[p.key] || [];
+        acts.forEach((act) => {
+          const k = `${p.key}|${act}`;
+          if (checked[k]) {
+            const ref = doc(collection(db, "entries"));
+            batch.set(ref, {
+              userId: user.uid,
+              date,
+              jour: jourPlanning,
+              periode: p.key,
+              activite: act,
+              medecins: "",
+              createdAt: new Date(),
+            });
+          }
+        });
+      });
 
       await batch.commit();
       setInfo("Activités enregistrées pour cette catégorie.");
@@ -252,10 +250,7 @@ export default function CategoryPage(props: any) {
     }
   };
 
-  const hasAnyActivity = PERIODES.some(
-    (p) => (activitiesByPeriode[p.key as PeriodeKey] || []).length > 0
-  );
-
+  // ---------- Rendu ----------
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-6">
       <div className="w-full max-w-md space-y-5">
@@ -303,49 +298,45 @@ export default function CategoryPage(props: any) {
           </div>
 
           {err && (
-            <div className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+            <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
               {err}
             </div>
           )}
           {info && (
-            <div className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
               {info}
             </div>
           )}
 
-          {!hasAnyActivity ? (
-            <p className="text-xs text-slate-500">
-              Aucune activité de type <strong>{meta.label}</strong> prévue ce
-              jour-là dans le planning.
-            </p>
+          {loading ? (
+            <div className="text-xs text-slate-500">Chargement…</div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {PERIODES.map((p) => {
-                const acts =
-                  activitiesByPeriode[p.key as PeriodeKey] || [];
-                if (!acts.length) return null;
+                const acts = activitiesByPeriode[p.key];
+                if (!acts || !acts.length) return null;
 
                 return (
-                  <div key={p.key} className="space-y-2">
+                  <div key={p.key} className="space-y-1">
                     <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                       <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
                       {p.label}
                     </div>
-                    <div className="space-y-2">
+                    <div className="grid gap-2">
                       {acts.map((act) => {
-                        const key = `${p.key}|${act}`;
+                        const k = `${p.key}|${act}`;
                         return (
                           <label
-                            key={key}
-                            className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs shadow-[0_8px_16px_rgba(15,23,42,0.06)]"
+                            key={k}
+                            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs bg-slate-50 hover:bg-slate-100"
                           >
-                            <span className="text-slate-800">{act}</span>
                             <input
                               type="checkbox"
                               className="h-4 w-4 rounded border-slate-400"
-                              checked={!!checked[key]}
+                              checked={!!checked[k]}
                               onChange={() => toggle(p.key, act)}
                             />
+                            <span className="truncate">{act}</span>
                           </label>
                         );
                       })}
@@ -357,17 +348,15 @@ export default function CategoryPage(props: any) {
           )}
 
           <button
-            className="mt-1 w-full rounded-full bg-sky-500 text-white text-xs font-medium py-2 shadow hover:bg-sky-600 disabled:opacity-60"
+            className="mt-2 w-full rounded-full bg-sky-500 text-white text-xs font-medium py-2 hover:bg-sky-600 disabled:opacity-60"
             onClick={handleSave}
-            disabled={saving || !hasAnyActivity}
+            disabled={saving}
           >
-            {saving
-              ? "Enregistrement…"
-              : "Enregistrer les activités de cette catégorie"}
+            {saving ? "Enregistrement…" : "Enregistrer les activités"}
           </button>
 
           <button
-            className="mt-2 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
+            className="mt-1 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
             onClick={() => router.push("/week")}
           >
             Aller à ma vue hebdomadaire
