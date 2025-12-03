@@ -3,20 +3,28 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "../../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { auth } from "../../../../lib/firebase";
 
-const CATEGORIES = [
+// Les 4 catégories affichées pour un jour donné
+type CategoryKey = "consultations" | "bloc" | "service" | "garde";
+
+const CATEGORIES: {
+  key: CategoryKey;
+  label: string;
+  description: string;
+  accent: string;
+}[] = [
   {
     key: "consultations",
     label: "Consultations",
-    description: "CS spécialisées, HDJ, externes…",
+    description: "Consultations spécialisées, HDJ, CS externes…",
     accent: "bg-emerald-500",
   },
   {
     key: "bloc",
     label: "Bloc opératoire",
-    description: "Programme opératoire, petite chirurgie…",
+    description: "Bloc, petite chirurgie, programme opératoire…",
     accent: "bg-sky-500",
   },
   {
@@ -31,20 +39,17 @@ const CATEGORIES = [
     description: "Garde, contre-visite, urgences…",
     accent: "bg-rose-500",
   },
-] as const;
+];
 
-type CategoryKey = (typeof CATEGORIES)[number]["key"];
-
-interface DayPageProps {
-  params: { date: string }; // vient de l’URL /day/2025-12-03
-}
-
-export default function DayPage({ params }: DayPageProps) {
-  const { date } = params;
+export default function DayPage(props: any) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
 
-  // Auth : si pas connecté → /login
+  // Récupération des params dynamiques sans typage strict
+  const params = (props as any).params || {};
+  const date: string = typeof params.date === "string" ? params.date : "";
+
+  // Auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -58,7 +63,8 @@ export default function DayPage({ params }: DayPageProps) {
 
   if (!user) return null;
 
-  const jsDate = new Date(date + "T00:00:00");
+  // Joli format FR
+  const jsDate = date ? new Date(date + "T00:00:00") : new Date();
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "2-digit",
@@ -67,7 +73,7 @@ export default function DayPage({ params }: DayPageProps) {
   });
 
   const handleCategoryClick = (key: CategoryKey) => {
-    router.push(`/day/${date}/category/${key}`);
+    router.push(`/day/${date}/${key}`);
   };
 
   return (
@@ -77,7 +83,7 @@ export default function DayPage({ params }: DayPageProps) {
         <header className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-              OphtaPlanner – {jsDate.getDate().toString().padStart(2, "0")}
+              OphtaPlanner – Ma journée
             </h1>
             <p className="text-xs text-slate-500 capitalize">{prettyDate}</p>
           </div>
@@ -100,43 +106,44 @@ export default function DayPage({ params }: DayPageProps) {
           </div>
         </header>
 
-        {/* Cartes catégories */}
+        {/* Carte principale avec les 4 catégories */}
         <section className="rounded-3xl bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)] border border-slate-100 p-4 space-y-4">
           <p className="text-xs text-slate-500">
-            Choisissez une catégorie pour ce jour. Vous retrouverez ensuite les
-            activités détaillées à cocher.
+            Choisissez une catégorie pour organiser les activités de cette
+            journée.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {CATEGORIES.map((cat) => (
               <button
                 key={cat.key}
                 onClick={() => handleCategoryClick(cat.key)}
-                className="group rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-white hover:shadow-md transition-all text-left p-3 flex flex-col justify-between"
+                className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 text-left shadow-[0_8px_16px_rgba(15,23,42,0.06)] hover:bg-slate-50 active:bg-slate-100 transition"
               >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-sm font-semibold text-slate-900">
-                    {cat.label}
-                  </span>
+                <div className="flex items-center gap-3">
                   <span
-                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-white ${cat.accent}`}
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl text-xs font-bold text-white ${cat.accent}`}
                   >
                     {cat.label[0]}
                   </span>
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-semibold text-slate-900">
+                      {cat.label}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {cat.description}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[11px] text-slate-500">{cat.description}</p>
-                <span className="mt-3 text-[11px] font-medium text-sky-600 group-hover:text-sky-700">
-                  Voir les activités →
-                </span>
               </button>
             ))}
           </div>
 
           <button
-            className="mt-2 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
+            className="mt-1 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
             onClick={() => router.push("/week")}
           >
-            Aller à ma vue hebdomadaire
+            Voir ma vue hebdomadaire
           </button>
         </section>
       </div>
