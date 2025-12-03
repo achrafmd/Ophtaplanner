@@ -1,6 +1,5 @@
-// lib/activityCategories.ts
+// src/lib/activityCategories.ts
 
-// On ajoute la 5e catégorie "exploration"
 export type CategoryKey =
   | "consultations"
   | "bloc"
@@ -8,9 +7,10 @@ export type CategoryKey =
   | "garde"
   | "exploration";
 
-// Les clés DOIVENT être exactement les mêmes que dans PLANNING.
+// Les clés DOIVENT être exactement les mêmes que dans PLANNING.ts
+// et dans ton lib/planning actuel.
 export const ACTIVITY_CATEGORY: Record<string, CategoryKey> = {
-  // ===== CONSULTATIONS =====
+  // ==== CONSULTATIONS ====
   "CS infectieuse": "consultations",
   "CS Pr Hidan": "consultations",
   "CS Pr Rachid": "consultations",
@@ -21,37 +21,36 @@ export const ACTIVITY_CATEGORY: Record<string, CategoryKey> = {
   "CS Cornée": "consultations",
   "CS Réfraction": "consultations",
   "CS rétinopathie diabétique": "consultations",
-  "Strabologie": "consultations",
-  "Glaucome": "consultations",
+  Strabologie: "consultations",
+  Glaucome: "consultations",
   "Uvéite": "consultations",
   "Nouveaux malades": "consultations",
-  "CRM": "consultations",
-  "Annexes": "consultations",
+  CRM: "consultations",
+  Annexes: "consultations",
 
-  // ===== BLOC OPÉRATOIRE =====
+  // ==== BLOC OPÉRATOIRE ====
   "Équipe 2ème salle": "bloc",
   "Équipe 3ème salle": "bloc",
   "Petite chirurgie": "bloc",
   "Équipe HDJ": "bloc",
 
-  // ===== SERVICE =====
+  // ==== SERVICE ====
   "Équipe visite": "service",
   "Équipe entrant": "service",
   "Équipe contre visite": "service",
   "Cours des externes": "service",
-  "Centralisation": "service",
+  Centralisation: "service",
   "Équipe dossier": "service",
 
-  // ===== GARDE =====
+  // ==== GARDE ====
   "Équipe de garde": "garde",
   "Équipe de garde du weekend": "garde",
 
-  // ===== EXPLORATION =====
+  // ==== EXPLORATION ====
   "Champs visuels (CV)": "exploration",
-  "OCT": "exploration",
-  "Topographie": "exploration",
-  "Laser": "exploration",
-  "Interprétation": "exploration",
-  // Logiquement exploration aussi :
-  "Angiographie": "exploration",
+  OCT: "exploration",
+  Topographie: "exploration",
+  Laser: "exploration",
+  Angiographie: "exploration",
+  Interprétation: "exploration",
 };
