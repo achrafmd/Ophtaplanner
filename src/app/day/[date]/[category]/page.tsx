@@ -6,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { auth } from "../../../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
+// métadonnées des catégories (mêmes clés que DayPage)
 const CATEGORY_META: Record<
   string,
   { label: string; description: string; accent: string }
@@ -34,18 +35,22 @@ const CATEGORY_META: Record<
   },
   exploration: {
     label: "Exploration",
-    description: "CV, OCT, Topographie, Laser, Interprétation…",
+    description: "Champs visuels, OCT, Topographie, Laser, Interprétation…",
     accent: "bg-amber-500",
   },
 };
 
 export default function CategoryPage() {
   const router = useRouter();
-  const params = useParams<{ date: string; category: string }>(); // 🔹 récupère [date] & [category]
-  const date = params?.date ?? "";
-  const category = params?.category ?? "consultations";
-
+  const params = useParams<{ date?: string; category?: string }>();
   const [user, setUser] = useState<any>(null);
+
+  const dateParam = params?.date;
+  const categoryParam = params?.category;
+
+  const date = typeof dateParam === "string" ? dateParam : "";
+  const category =
+    typeof categoryParam === "string" ? categoryParam : "consultations";
 
   const meta = CATEGORY_META[category] ?? CATEGORY_META["consultations"];
 
@@ -71,6 +76,12 @@ export default function CategoryPage() {
     year: "numeric",
   });
 
+  const goBackToCategories = () => {
+    const usedDate =
+      date || new Date().toISOString().slice(0, 10);
+    router.push(`/day/${usedDate}`);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-6">
       <div className="w-full max-w-md space-y-5">
@@ -85,7 +96,7 @@ export default function CategoryPage() {
           <div className="flex flex-col items-end gap-1 text-xs">
             <button
               className="px-3 py-1 rounded-full border bg-white hover:bg-slate-50"
-              onClick={() => router.push(`/day/${encodeURIComponent(date)}`)}
+              onClick={goBackToCategories}
             >
               Catégories
             </button>
@@ -124,9 +135,7 @@ export default function CategoryPage() {
           </p>
 
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-500 space-y-1">
-            <p className="font-medium text-slate-700">
-              Prochaine étape :
-            </p>
+            <p className="font-medium text-slate-700">Prochaine étape :</p>
             <ul className="list-disc list-inside space-y-1">
               <li>
                 Lier cette page au même système d&apos;enregistrement que
