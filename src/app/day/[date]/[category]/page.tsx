@@ -189,48 +189,58 @@ export default function CategoryPage(props: any) {
   };
 
   const handleSave = async () => {
-    if (!user || !date) return;
-    setSaving(true);
-    setErr("");
-    setInfo("");
+  if (!user || !date) return;
+  setSaving(true);
+  setErr("");
+  setInfo("");
 
-    try {
-      const batch = writeBatch(db);
+  try {
+    const batch = writeBatch(db);
 
-      // 1) supprimer toutes les entrées de cette catégorie pour ce jour
-      const qRef = query(
-        collection(db, "entries"),
-        where("userId", "==", user.uid),
-        where("date", "==", date)
-      );
-      const snap = await getDocs(qRef);
-      snap.forEach((docSnap) => {
-        const d = docSnap.data() as any;
-        const cat = ACTIVITY_CATEGORY[d.activite];
-        if (cat === catKey) {
-          batch.delete(docSnap.ref);
+    // 1) supprimer toutes les entrées de cette catégorie pour ce jour
+    const qRef = query(
+      collection(db, "entries"),
+      where("userId", "==", user.uid),
+      where("date", "==", date)
+    );
+    const snap = await getDocs(qRef);
+    snap.forEach((docSnap) => {
+      const d = docSnap.data() as any;
+      const cat = ACTIVITY_CATEGORY[d.activite];
+      if (cat === catKey) {
+        batch.delete(docSnap.ref);
+      }
+    });
+
+    // 2) recréer ce qui est coché
+    (PERIODES as { key: PeriodeKey; label: string }[]).forEach((p) => {
+      const acts = activitiesByPeriode[p.key] || [];
+      acts.forEach((act) => {
+        const key = `${p.key}|${act}`;
+        if (checked[key]) {
+          const ref = doc(collection(db, "entries"));
+          batch.set(ref, {
+            userId: user.uid,
+            date,
+            jour: jourPlanning,
+            periode: p.key,
+            activite: act,
+            medecins: "",
+            createdAt: new Date(),
+          });
         }
       });
+    });
 
-      // 2) recréer ce qui est coché
-      (PERIODES as { key: PeriodeKey; label: string }[]).forEach((p) => {
-        const acts = activitiesByPeriode[p.key] || [];
-        acts.forEach((act) => {
-          const key = `${p.key}|${act}`;
-          if (checked[key]) {
-            const ref = doc(collection(db, "entries"));
-            batch.set(ref, {
-              userId: user.uid,
-              date,
-              jour: jourPlanning,
-              periode: p.key,
-              activite: act,
-              medecins: "",
-              createdAt: new Date(),
-            });
-          }
-        });
-      });
+    await batch.commit();
+    setInfo("Activités enregistrées pour cette catégorie.");
+  } catch (e: any) {
+    console.error(e);
+    setErr(e.message || String(e));
+  } finally {
+    setSaving(false);
+  }
+};
 
       await batch.commit();
       setInfo("Activités enregistrées pour cette catégorie.");
