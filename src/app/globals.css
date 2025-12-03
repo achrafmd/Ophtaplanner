@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss"; 
 
 /* Thème clair (forcé même si le téléphone est en mode sombre) */
 :root {
