@@ -36,6 +36,8 @@ const JOURS_FR = [
   "Samedi",
 ];
 
+type PeriodeKey = (typeof PERIODES)[number]["key"];
+
 export default function CategoryPage(props: any) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -110,7 +112,6 @@ export default function CategoryPage(props: any) {
     return () => unsub();
   }, [router]);
 
-  // si pas encore authentifié
   if (!user) return null;
 
   // date jolie + jour PLANNING
@@ -129,19 +130,18 @@ export default function CategoryPage(props: any) {
   const jourPlanning = JOURS_FR[jsDate.getDay()]; // ex "Mercredi"
 
   // activités de ce jour / catégorie, regroupées par période
-  type PeriodeKey = (typeof PERIODES)[number]["key"];
   const activitiesByPeriode: Record<PeriodeKey, string[]> = useMemo(() => {
     const res: Record<PeriodeKey, string[]> = {
-      "Matin": [],
+      Matin: [],
       "Après-midi": [],
       "Matin & Après-midi": [],
     };
 
-    const dayBlock = PLANNING[jourPlanning as keyof typeof PLANNING];
+    const dayBlock = (PLANNING as any)[jourPlanning] as any;
     if (!dayBlock) return res;
 
     (PERIODES as { key: PeriodeKey; label: string }[]).forEach((p) => {
-      const allActs: string[] = (dayBlock[p.key] as string[]) || [];
+      const allActs: string[] = (dayBlock?.[p.key] as string[]) || [];
       res[p.key] = allActs.filter(
         (act) => ACTIVITY_CATEGORY[act] === catKey
       );
@@ -194,7 +194,7 @@ export default function CategoryPage(props: any) {
     setErr("");
     setInfo("");
 
-    try:
+    try {
       const batch = writeBatch(db);
 
       // 1) supprimer toutes les entrées de cette catégorie pour ce jour
