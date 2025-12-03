@@ -2,9 +2,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter, useParams } from "next/navigation";
 import { auth } from "../../../../../lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 
 const CATEGORY_META: Record<
   string,
@@ -13,7 +13,7 @@ const CATEGORY_META: Record<
   consultations: {
     label: "Consultations",
     description:
-      "CS spécialisées, nouveaux malades, CS externes, CRM, annexes…",
+      "Consultations spécialisées, nouveaux malades, CS externes, CRM, annexes…",
     accent: "bg-emerald-500",
   },
   bloc: {
@@ -29,27 +29,25 @@ const CATEGORY_META: Record<
   },
   garde: {
     label: "Garde",
-    description: "Garde, contre-visite, urgences, weekend…",
+    description: "Garde semaine et garde du weekend.",
     accent: "bg-rose-500",
   },
   exploration: {
     label: "Exploration",
-    description: "Champs visuels, OCT, Topographie, Laser, Interprétation…",
+    description: "CV, OCT, Topographie, Laser, Interprétation…",
     accent: "bg-amber-500",
   },
 };
 
-export default function CategoryPage({
-  params,
-}: {
-  params: { date: string; category: string };
-}) {
+export default function CategoryPage() {
   const router = useRouter();
+  const params = useParams<{ date: string; category: string }>(); // 🔹 récupère [date] & [category]
+  const date = params?.date ?? "";
+  const category = params?.category ?? "consultations";
+
   const [user, setUser] = useState<any>(null);
 
-  const date = params?.date ?? "";
-  const rawCategory = params?.category ?? "consultations";
-  const meta = CATEGORY_META[rawCategory] ?? CATEGORY_META["consultations"];
+  const meta = CATEGORY_META[category] ?? CATEGORY_META["consultations"];
 
   // Auth
   useEffect(() => {
@@ -121,20 +119,22 @@ export default function CategoryPage({
 
           <p className="text-xs text-slate-500">
             Ici on affichera les listes d&apos;activités à cocher pour cette
-            catégorie (Matin / Après-midi / Garde) reliées à ton planning
-            hebdomadaire. Pour l’instant, la navigation et le design sont prêts.
+            catégorie (Matin / Après-midi / Garde / Exploration) reliées à ton
+            planning hebdomadaire.
           </p>
 
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-500 space-y-1">
-            <p className="font-medium text-slate-700">Prochaine étape :</p>
+            <p className="font-medium text-slate-700">
+              Prochaine étape :
+            </p>
             <ul className="list-disc list-inside space-y-1">
               <li>
-                Lier cette page au même système d&apos;enregistrement que{" "}
-                <span className="font-semibold">la vue semaine</span>.
+                Lier cette page au même système d&apos;enregistrement que
+                <span className="font-semibold"> la vue semaine</span>.
               </li>
               <li>
-                Utiliser le mapping activité → catégorie pour n&apos;afficher
-                que les activités correspondantes.
+                Filtrer les activités du planning en fonction de la catégorie
+                (Consultations / Bloc / Service / Garde / Exploration).
               </li>
             </ul>
           </div>
