@@ -6,12 +6,19 @@ import { useRouter, useParams } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../../../lib/firebase";
 
-const CATEGORIES = [
+// Les 5 catégories
+type CategoryKey = "consultations" | "bloc" | "service" | "garde" | "exploration";
+
+const CATEGORIES: {
+  key: CategoryKey;
+  label: string;
+  description: string;
+  accent: string;
+}[] = [
   {
     key: "consultations",
     label: "Consultations",
-    description:
-      "Consultations spécialisées, nouveaux malades, CS externes, CRM, annexes…",
+    description: "Consultations spécialisées, nouveaux malades, CS externes, CRM, annexes…",
     accent: "bg-emerald-500",
   },
   {
@@ -23,8 +30,7 @@ const CATEGORIES = [
   {
     key: "service",
     label: "Service",
-    description:
-      "Visites, entrants, contre-visite, dossiers, cours, centralisation…",
+    description: "Visites, entrants, contre-visite, dossiers, cours, centralisation…",
     accent: "bg-indigo-500",
   },
   {
@@ -43,10 +49,11 @@ const CATEGORIES = [
 
 export default function DayPage() {
   const router = useRouter();
-  const params = useParams<{ date: string }>(); // 🔹 récupère [date] depuis l’URL
-  const date = params?.date ?? "";
-
+  const params = useParams<{ date?: string }>();
   const [user, setUser] = useState<any>(null);
+
+  const dateParam = params?.date;
+  const date = typeof dateParam === "string" ? dateParam : "";
 
   // Auth
   useEffect(() => {
@@ -62,7 +69,7 @@ export default function DayPage() {
 
   if (!user) return null;
 
-  // Joli format FR basé sur LA DATE DE L’URL
+  // Joli format FR
   const jsDate = date ? new Date(date + "T00:00:00") : new Date();
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -71,9 +78,10 @@ export default function DayPage() {
     year: "numeric",
   });
 
-  const handleCategoryClick = (key: string) => {
-    if (!date) return;
-    router.push(`/day/${encodeURIComponent(date)}/${key}`);
+  const handleCategoryClick = (key: CategoryKey) => {
+    const usedDate =
+      date || new Date().toISOString().slice(0, 10); // sécurité
+    router.push(`/day/${usedDate}/${key}`);
   };
 
   return (
