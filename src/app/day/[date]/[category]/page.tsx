@@ -5,33 +5,11 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth } from "../../../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-
-// Catégories possibles
-const CATEGORY_META: Record<
-  string,
-  { label: string; description: string; accent: string }
-> = {
-  consultations: {
-    label: "Consultations",
-    description: "Consultations spécialisées, HDJ, CS externes…",
-    accent: "bg-emerald-500",
-  },
-  bloc: {
-    label: "Bloc opératoire",
-    description: "Bloc, petite chirurgie, programme opératoire…",
-    accent: "bg-sky-500",
-  },
-  service: {
-    label: "Service",
-    description: "Visites, HDJ, dossiers, examens complémentaires…",
-    accent: "bg-indigo-500",
-  },
-  garde: {
-    label: "Garde",
-    description: "Garde, contre-visite, urgences…",
-    accent: "bg-rose-500",
-  },
-};
+import {
+  CATEGORY_META,
+  CATEGORY_ACTIVITIES,
+  type CategoryKey,
+} from "../../../../../lib/categories";
 
 export default function CategoryPage(props: any) {
   const router = useRouter();
@@ -39,11 +17,17 @@ export default function CategoryPage(props: any) {
 
   const params = (props as any).params || {};
   const date: string = typeof params.date === "string" ? params.date : "";
-  const category: string =
+  const categoryParam: string =
     typeof params.category === "string" ? params.category : "consultations";
 
-  const meta =
-    CATEGORY_META[category] ?? CATEGORY_META["consultations"];
+  const catKey: CategoryKey = (["consultations", "bloc", "service", "garde", "exploration"].includes(
+    categoryParam
+  )
+    ? categoryParam
+    : "consultations") as CategoryKey;
+
+  const meta = CATEGORY_META[catKey];
+  const activities = CATEGORY_ACTIVITIES[catKey];
 
   // Auth
   useEffect(() => {
@@ -59,10 +43,7 @@ export default function CategoryPage(props: any) {
 
   if (!user) return null;
 
-  const jsDate = date
-    ? new Date(date + "T00:00:00")
-    : new Date();
-
+  const jsDate = date ? new Date(date + "T00:00:00") : new Date();
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "2-digit",
@@ -80,6 +61,10 @@ export default function CategoryPage(props: any) {
               OphtaPlanner – Activités
             </h1>
             <p className="text-xs text-slate-500 capitalize">{prettyDate}</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Catégorie :{" "}
+              <span className="font-semibold text-slate-800">{meta.label}</span>
+            </p>
           </div>
           <div className="flex flex-col items-end gap-1 text-xs">
             <button
@@ -116,27 +101,25 @@ export default function CategoryPage(props: any) {
             </div>
           </div>
 
-          <p className="text-xs text-slate-500">
-            Ici on affichera les listes d&apos;activités à cocher pour cette
-            catégorie (Matin / Après-midi / Garde) reliées à ton planning
-            hebdomadaire.
-          </p>
-
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-500 space-y-1">
-            <p className="font-medium text-slate-700">
-              Prochaine étape :
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">
+              Activités possibles pour cette catégorie ce jour-là :
             </p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>
-                Lier cette page au même système d&apos;enregistrement que
-                <span className="font-semibold"> la vue semaine</span>.
-              </li>
-              <li>
-                Filtrer les activités du planning en fonction de la catégorie
-                (Consultations / Bloc / Service / Garde).
-              </li>
-            </ul>
+            <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-1 max-h-72 overflow-auto">
+              {activities.map((act) => (
+                <div
+                  key={act}
+                  className="text-xs sm:text-sm text-slate-800 flex items-center gap-2"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                  <span>{act}</span>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Pour l'instant cette page est une vue de référence.
+              On pourra plus tard lier ces activités à un système d'enregistrement comme la vue semaine. */}
 
           <button
             className="mt-1 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
