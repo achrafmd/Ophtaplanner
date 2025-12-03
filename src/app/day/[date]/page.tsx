@@ -5,15 +5,57 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../../../lib/firebase";
-import { CATEGORIES, type CategoryKey } from "../../../../lib/categories";
 
-export default function DayPage(props: any) {
+// On laisse les clés en string pour éviter les histoires de types.
+const CATEGORIES: {
+  key: string;
+  label: string;
+  description: string;
+  accent: string;
+}[] = [
+  {
+    key: "consultations",
+    label: "Consultations",
+    description:
+      "Consultations spécialisées, nouveaux malades, CS externes, CRM, annexes…",
+    accent: "bg-emerald-500",
+  },
+  {
+    key: "bloc",
+    label: "Bloc opératoire",
+    description: "Bloc, 2ème/3ème salle, HDJ, petite chirurgie…",
+    accent: "bg-sky-500",
+  },
+  {
+    key: "service",
+    label: "Service",
+    description:
+      "Visites, entrants, contre-visite, dossiers, cours, centralisation…",
+    accent: "bg-indigo-500",
+  },
+  {
+    key: "garde",
+    label: "Garde",
+    description: "Garde semaine et garde du weekend.",
+    accent: "bg-rose-500",
+  },
+  {
+    key: "exploration",
+    label: "Exploration",
+    description: "CV, OCT, Topographie, Laser, Interprétation…",
+    accent: "bg-amber-500",
+  },
+];
+
+export default function DayPage({
+  params,
+}: {
+  params: { date: string };
+}) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
 
-  // Récupération des params dynamiques sans typage strict
-  const params = (props as any).params || {};
-  const date: string = typeof params.date === "string" ? params.date : "";
+  const date = params?.date ?? "";
 
   // Auth
   useEffect(() => {
@@ -38,8 +80,9 @@ export default function DayPage(props: any) {
     year: "numeric",
   });
 
-  const handleCategoryClick = (key: CategoryKey) => {
-    router.push(`/day/${date}/${key}`);
+  const handleCategoryClick = (key: string) => {
+    if (!date) return;
+    router.push(`/day/${encodeURIComponent(date)}/${key}`);
   };
 
   return (
