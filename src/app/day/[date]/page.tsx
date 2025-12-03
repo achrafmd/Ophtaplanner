@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../../../lib/firebase";
 
@@ -72,10 +73,6 @@ export default function DayPage(props: any) {
     year: "numeric",
   });
 
-  const handleCategoryClick = (key: CategoryKey) => {
-    router.push(`/day/${date}/${key}`);
-  };
-
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-6">
       <div className="w-full max-w-md space-y-5">
@@ -115,9 +112,9 @@ export default function DayPage(props: any) {
 
           <div className="grid grid-cols-2 gap-3">
             {CATEGORIES.map((cat) => (
-              <button
+              <Link
                 key={cat.key}
-                onClick={() => handleCategoryClick(cat.key)}
+                href={date ? `/day/${date}/${cat.key}` : "#"}
                 className="rounded-2xl border border-slate-100 bg-slate-50/60 p-3 text-left shadow-[0_8px_16px_rgba(15,23,42,0.06)] hover:bg-slate-50 active:bg-slate-100 transition"
               >
                 <div className="flex items-center gap-3">
@@ -135,7 +132,7 @@ export default function DayPage(props: any) {
                     </div>
                   </div>
                 </div>
-              </button>
+              </Link>
             ))}
           </div>
 
