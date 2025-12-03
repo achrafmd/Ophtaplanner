@@ -6,7 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../../../lib/firebase";
 
-// Les 5 catégories
+// Les 5 catégories affichées pour un jour donné
 type CategoryKey = "consultations" | "bloc" | "service" | "garde" | "exploration";
 
 const CATEGORIES: {
@@ -50,10 +50,11 @@ const CATEGORIES: {
 export default function DayPage() {
   const router = useRouter();
   const params = useParams<{ date?: string }>();
+
   const [user, setUser] = useState<any>(null);
 
-  const dateParam = params?.date;
-  const date = typeof dateParam === "string" ? dateParam : "";
+  // Récupération de la date depuis l’URL
+  const date: string = (params?.date as string) || "";
 
   // Auth
   useEffect(() => {
@@ -79,9 +80,7 @@ export default function DayPage() {
   });
 
   const handleCategoryClick = (key: CategoryKey) => {
-    const usedDate =
-      date || new Date().toISOString().slice(0, 10); // sécurité
-    router.push(`/day/${usedDate}/${key}`);
+    router.push(`/day/${date}/${key}`);
   };
 
   return (
@@ -114,11 +113,10 @@ export default function DayPage() {
           </div>
         </header>
 
-        {/* Carte principale avec les catégories */}
+        {/* Carte principale avec les 5 catégories */}
         <section className="rounded-3xl bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)] border border-slate-100 p-4 space-y-4">
           <p className="text-xs text-slate-500">
-            Choisissez une catégorie pour organiser les activités de cette
-            journée.
+            Choisissez une catégorie pour organiser les activités de cette journée.
           </p>
 
           <div className="grid grid-cols-2 gap-3">
