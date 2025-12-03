@@ -1,56 +1,59 @@
 // src/app/day/[date]/[category]/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "../../../../../lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  writeBatch,
-  doc,
-} from "firebase/firestore";
-import { PLANNING } from "../../../../../lib/planning";
-import {
-  ACTIVITY_CATEGORY,
+import { auth } from "../../../../../lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+
+// Les 4 catégories principales
+type CategoryKey = "consultations" | "bloc" | "service" | "garde";
+
+const CATEGORY_META: Record<
   CategoryKey,
-} from "../../../../../lib/activityCategories";
+  { label: string; description: string; accent: string }
+> = {
+  consultations: {
+    label: "Consultations",
+    description: "Consultations spécialisées, HDJ, CS externes…",
+    accent: "bg-emerald-500",
+  },
+  bloc: {
+    label: "Bloc opératoire",
+    description: "Bloc, petite chirurgie, programme opératoire…",
+    accent: "bg-sky-500",
+  },
+  service: {
+    label: "Service",
+    description: "Visites, HDJ, dossiers, examens complémentaires…",
+    accent: "bg-indigo-500",
+  },
+  garde: {
+    label: "Garde",
+    description: "Garde, contre-visite, urgences…",
+    accent: "bg-rose-500",
+  },
+};
 
-type PeriodeKey = "Matin" | "Après-midi" | "Matin & Après-midi";
+// Typage très simple des props pour éviter l’erreur TS
+interface CategoryPageProps {
+  params: {
+    date: string; // "YYYY-MM-DD"
+    category: string; // on castera ensuite vers CategoryKey
+  };
+}
 
-const PERIODES: { key: PeriodeKey; label: string }[] = [
-  { key: "Matin", label: "Matin" },
-  { key: "Après-midi", label: "Après-midi" },
-  { key: "Matin & Après-midi", label: "Matin & Après-midi" },
-];
-
-const JOURS_FR = [
-  "Dimanche",
-  "Lundi",
-  "Mardi",
-  "Mercredi",
-  "Jeudi",
-  "Vendredi",
-  "Samedi",
-];
-
-export default function DayCategoryPage({
-  params,
-}: {
-  params: { date: string; category: CategoryKey };
-}) {
+export default function CategoryPage({ params }: CategoryPageProps) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
-  const [info, setInfo] = useState("");
-  const [err, setErr] = useState("");
 
-  const dateStr = params.date;
-  const category = params.category;
+  const { date, category } = params;
+  const catKey: CategoryKey =
+    (["consultations", "bloc", "service", "garde"].includes(category)
+      ? category
+      : "consultations") as CategoryKey;
+
+  const meta = CATEGORY_META[catKey];
 
   // Auth
   useEffect(() => {
@@ -64,202 +67,91 @@ export default function DayCategoryPage({
     return () => unsub();
   }, [router]);
 
-  const jour = useMemo(() => {
-    const d = new Date(dateStr + "T00:00:00");
-    return JOURS_FR[d.getDay()];
-  }, [dateStr]);
-
-  // Activités du PLANNING filtrées par catégorie
-  const activitiesByPeriode = useMemo(() => {
-    const dayPlanning = PLANNING[jour] || {};
-    const result: Record<PeriodeKey, string[]> = {
-      Matin: [],
-      "Après-midi": [],
-      "Matin & Après-midi": [],
-    };
-
-    (Object.keys(dayPlanning) as PeriodeKey[]).forEach((p) => {
-      const acts = dayPlanning[p] || [];
-      result[p] = acts.filter((a) => ACTIVITY_CATEGORY[a] === category);
-    });
-
-    return result;
-  }, [jour, category]);
-
-  // Charger les entrées existantes pour ce jour + cette catégorie
-  useEffect(() => {
-    if (!user) return;
-    (async () => {
-      setLoading(true);
-      setErr("");
-      try {
-        const qRef = query(
-          collection(db, "entries"),
-          where("userId", "==", user.uid),
-          where("date", "==", dateStr)
-        );
-        const snap = await getDocs(qRef);
-        const map: Record<string, boolean> = {};
-        snap.forEach((d) => {
-          const data = d.data() as any;
-          const key = `${data.date}|${data.periode}|${data.activite}`;
-          if (ACTIVITY_CATEGORY[data.activite] === category) {
-            map[key] = true;
-          }
-        });
-        setChecked(map);
-      } catch (e: any) {
-        setErr(String(e.message || e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [user, dateStr, category]);
-
-  const toggle = (key: string) => {
-    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const save = async () => {
-    if (!user) return;
-    setLoading(true);
-    setInfo("");
-    setErr("");
-    try {
-      const batch = writeBatch(db);
-
-      // Supprimer les entrées de cette catégorie pour ce jour
-      const qRef = query(
-        collection(db, "entries"),
-        where("userId", "==", user.uid),
-        where("date", "==", dateStr)
-      );
-      const snap = await getDocs(qRef);
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        if (ACTIVITY_CATEGORY[data.activite] === category) {
-          batch.delete(d.ref);
-        }
-      });
-
-      // Recréer à partir des cases cochées
-      (Object.keys(activitiesByPeriode) as PeriodeKey[]).forEach((periode) => {
-        const acts = activitiesByPeriode[periode] || [];
-        acts.forEach((activite) => {
-          const key = `${dateStr}|${periode}|${activite}`;
-          if (checked[key]) {
-            const ref = doc(collection(db, "entries"));
-            batch.set(ref, {
-              userId: user.uid,
-              date: dateStr,
-              jour,
-              periode,
-              activite,
-              createdAt: new Date(),
-            });
-          }
-        });
-      });
-
-      await batch.commit();
-      setInfo("Activités enregistrées");
-    } catch (e: any) {
-      setErr(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (!user) return null;
 
-  const dateLabel = new Date(dateStr + "T00:00:00").toLocaleDateString(
-    "fr-FR",
-    { weekday: "long", day: "2-digit", month: "short" }
-  );
-
-  const categoryLabel =
-    category === "consultations"
-      ? "Consultations"
-      : category === "bloc"
-      ? "Bloc opératoire"
-      : category === "service"
-      ? "Service"
-      : "Garde";
+  const jsDate = new Date(date + "T00:00:00");
+  const prettyDate = jsDate.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4 py-6">
-      <div className="w-full max-w-md space-y-4">
-        <header className="flex items-center justify-between">
+      <div className="w-full max-w-md space-y-5">
+        {/* Header */}
+        <header className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">
-              {categoryLabel}
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              OphtaPlanner – Activités
             </h1>
-            <p className="text-xs text-slate-500">{dateLabel}</p>
+            <p className="text-xs text-slate-500 capitalize">{prettyDate}</p>
           </div>
-          <button
-            className="text-xs rounded-full border px-3 py-1 hover:bg-slate-100"
-            onClick={() => router.push(`/day/${dateStr}`)}
-          >
-            Catégories
-          </button>
+          <div className="flex flex-col items-end gap-1 text-xs">
+            <button
+              className="px-3 py-1 rounded-full border bg-white hover:bg-slate-50"
+              onClick={() => router.push(`/day/${date}`)}
+            >
+              Catégories
+            </button>
+            <button
+              className="px-3 py-1 rounded-full border bg-white hover:bg-slate-50"
+              onClick={async () => {
+                await signOut(auth);
+                router.replace("/login");
+              }}
+            >
+              Se déconnecter
+            </button>
+          </div>
         </header>
 
-        <section className="rounded-3xl bg-white border border-slate-100 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.18)] space-y-3">
-          {err && (
-            <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-              {err}
+        {/* Carte principale */}
+        <section className="rounded-3xl bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)] border border-slate-100 p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-bold text-white ${meta.accent}`}
+            >
+              {meta.label[0]}
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">
+                {meta.label}
+              </h2>
+              <p className="text-[11px] text-slate-500">{meta.description}</p>
             </div>
-          )}
-          {info && (
-            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
-              {info}
-            </div>
-          )}
+          </div>
 
-          {loading ? (
-            <div className="text-sm text-slate-500">Chargement…</div>
-          ) : (
-            <div className="space-y-4">
-              {PERIODES.map(({ key, label }) => {
-                const acts = activitiesByPeriode[key] || [];
-                if (!acts.length) return null;
-                return (
-                  <div key={key} className="space-y-1">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      {label}
-                    </div>
-                    <div className="grid gap-2">
-                      {acts.map((act) => {
-                        const k = `${dateStr}|${key}|${act}`;
-                        return (
-                          <label
-                            key={k}
-                            className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs bg-slate-50 hover:bg-slate-100"
-                          >
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-slate-400"
-                              checked={!!checked[k]}
-                              onChange={() => toggle(k)}
-                            />
-                            <span className="truncate">{act}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+          <p className="text-xs text-slate-500">
+            Ici on affichera les listes d&apos;activités à cocher pour cette
+            catégorie (Matin / Après-midi / Garde) reliées à ton planning
+            hebdomadaire. Pour l’instant, cette page est prête niveau design et
+            navigation, et tu peux déjà l’utiliser comme base.
+          </p>
 
-              <button
-                onClick={save}
-                disabled={loading}
-                className="w-full rounded-full bg-emerald-600 text-white text-sm font-medium py-2 shadow-sm hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {loading ? "Enregistrement..." : "Enregistrer"}
-              </button>
-            </div>
-          )}
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-500 space-y-1">
+            <p className="font-medium text-slate-700">
+              Prochaine étape (facultative) :
+            </p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>
+                Lier cette page au même système d&apos;enregistrement que
+                <span className="font-semibold"> la vue semaine</span>.
+              </li>
+              <li>
+                Filtrer les activités du planning en fonction de la catégorie
+                (Consultations / Bloc / Service / Garde).
+              </li>
+            </ul>
+          </div>
+
+          <button
+            className="mt-1 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
+            onClick={() => router.push("/week")}
+          >
+            Aller à ma vue hebdomadaire
+          </button>
         </section>
       </div>
     </div>
