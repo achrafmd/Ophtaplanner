@@ -6,13 +6,7 @@ import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "../../../../lib/firebase";
 
-// On laisse les clés en string pour éviter les histoires de types.
-const CATEGORIES: {
-  key: string;
-  label: string;
-  description: string;
-  accent: string;
-}[] = [
+const CATEGORIES = [
   {
     key: "consultations",
     label: "Consultations",
@@ -71,7 +65,6 @@ export default function DayPage({
 
   if (!user) return null;
 
-  // Joli format FR
   const jsDate = date ? new Date(date + "T00:00:00") : new Date();
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -115,7 +108,7 @@ export default function DayPage({
           </div>
         </header>
 
-        {/* Carte principale avec les 5 catégories */}
+        {/* Carte principale avec les catégories */}
         <section className="rounded-3xl bg-white shadow-[0_18px_45px_rgba(15,23,42,0.18)] border border-slate-100 p-4 space-y-4">
           <p className="text-xs text-slate-500">
             Choisissez une catégorie pour organiser les activités de cette
