@@ -13,9 +13,16 @@ import {
   startOfWeek,
   endOfWeek,
   eachDayOfInterval,
+  formatISO,
 } from "date-fns";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
+// Utilitaire sûr pour avoir un "YYYY-MM-DD"
+const isoDate = (d: Date) =>
+  formatISO(d, {
+    representation: "date",
+  });
 
 export default function HomeCalendar() {
   const router = useRouter();
@@ -49,11 +56,11 @@ export default function HomeCalendar() {
     year: "numeric",
   });
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = isoDate(new Date());
 
   const handleDayClick = (d: Date) => {
-    const iso = d.toISOString().slice(0, 10);
-    router.push(`/day/${iso}`);
+    const iso = isoDate(d);
+    router.push(`/day/${encodeURIComponent(iso)}`);
   };
 
   return (
@@ -102,7 +109,7 @@ export default function HomeCalendar() {
           {/* Grille de jours */}
           <div className="grid grid-cols-7 gap-y-2 text-sm">
             {days.map((d) => {
-              const iso = d.toISOString().slice(0, 10);
+              const iso = isoDate(d);
               const isToday = iso === todayIso;
               const isCurrentMonth =
                 d.getMonth() === currentMonth.getMonth();
@@ -127,9 +134,7 @@ export default function HomeCalendar() {
                   onClick={() => handleDayClick(d)}
                   className="flex justify-center"
                 >
-                  <span className={`${base} ${classes}`}>
-                    {d.getDate()}
-                  </span>
+                  <span className={`${base} ${classes}`}>{d.getDate()}</span>
                 </button>
               );
             })}
