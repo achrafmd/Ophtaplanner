@@ -3,31 +3,53 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth } from "../../../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import {
-  CATEGORY_META,
-  CATEGORY_ACTIVITIES,
-  type CategoryKey,
-} from "../../../../../lib/categories";
+import { auth } from "../../../../../lib/firebase";
 
-export default function CategoryPage(props: any) {
+const CATEGORY_META: Record<
+  string,
+  { label: string; description: string; accent: string }
+> = {
+  consultations: {
+    label: "Consultations",
+    description:
+      "CS spécialisées, nouveaux malades, CS externes, CRM, annexes…",
+    accent: "bg-emerald-500",
+  },
+  bloc: {
+    label: "Bloc opératoire",
+    description: "Bloc, 2ème/3ème salle, HDJ, petite chirurgie…",
+    accent: "bg-sky-500",
+  },
+  service: {
+    label: "Service",
+    description:
+      "Visites, entrants, contre-visite, dossiers, cours, centralisation…",
+    accent: "bg-indigo-500",
+  },
+  garde: {
+    label: "Garde",
+    description: "Garde, contre-visite, urgences, weekend…",
+    accent: "bg-rose-500",
+  },
+  exploration: {
+    label: "Exploration",
+    description: "Champs visuels, OCT, Topographie, Laser, Interprétation…",
+    accent: "bg-amber-500",
+  },
+};
+
+export default function CategoryPage({
+  params,
+}: {
+  params: { date: string; category: string };
+}) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
 
-  const params = (props as any).params || {};
-  const date: string = typeof params.date === "string" ? params.date : "";
-  const categoryParam: string =
-    typeof params.category === "string" ? params.category : "consultations";
-
-  const catKey: CategoryKey = (["consultations", "bloc", "service", "garde", "exploration"].includes(
-    categoryParam
-  )
-    ? categoryParam
-    : "consultations") as CategoryKey;
-
-  const meta = CATEGORY_META[catKey];
-  const activities = CATEGORY_ACTIVITIES[catKey];
+  const date = params?.date ?? "";
+  const rawCategory = params?.category ?? "consultations";
+  const meta = CATEGORY_META[rawCategory] ?? CATEGORY_META["consultations"];
 
   // Auth
   useEffect(() => {
@@ -61,15 +83,11 @@ export default function CategoryPage(props: any) {
               OphtaPlanner – Activités
             </h1>
             <p className="text-xs text-slate-500 capitalize">{prettyDate}</p>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Catégorie :{" "}
-              <span className="font-semibold text-slate-800">{meta.label}</span>
-            </p>
           </div>
           <div className="flex flex-col items-end gap-1 text-xs">
             <button
               className="px-3 py-1 rounded-full border bg-white hover:bg-slate-50"
-              onClick={() => router.push(`/day/${date}`)}
+              onClick={() => router.push(`/day/${encodeURIComponent(date)}`)}
             >
               Catégories
             </button>
@@ -101,25 +119,25 @@ export default function CategoryPage(props: any) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-xs text-slate-500">
-              Activités possibles pour cette catégorie ce jour-là :
-            </p>
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/80 p-3 space-y-1 max-h-72 overflow-auto">
-              {activities.map((act) => (
-                <div
-                  key={act}
-                  className="text-xs sm:text-sm text-slate-800 flex items-center gap-2"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                  <span>{act}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <p className="text-xs text-slate-500">
+            Ici on affichera les listes d&apos;activités à cocher pour cette
+            catégorie (Matin / Après-midi / Garde) reliées à ton planning
+            hebdomadaire. Pour l’instant, la navigation et le design sont prêts.
+          </p>
 
-          {/* Pour l'instant cette page est une vue de référence.
-              On pourra plus tard lier ces activités à un système d'enregistrement comme la vue semaine. */}
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-500 space-y-1">
+            <p className="font-medium text-slate-700">Prochaine étape :</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>
+                Lier cette page au même système d&apos;enregistrement que{" "}
+                <span className="font-semibold">la vue semaine</span>.
+              </li>
+              <li>
+                Utiliser le mapping activité → catégorie pour n&apos;afficher
+                que les activités correspondantes.
+              </li>
+            </ul>
+          </div>
 
           <button
             className="mt-1 w-full rounded-full bg-sky-50 text-sky-700 text-xs font-medium py-2 border border-sky-100 hover:bg-sky-100"
