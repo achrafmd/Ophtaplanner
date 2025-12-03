@@ -6,11 +6,9 @@ import { useRouter } from "next/navigation";
 import { auth } from "../../../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
-// Les 4 catégories principales
-type CategoryKey = "consultations" | "bloc" | "service" | "garde";
-
+// Catégories possibles
 const CATEGORY_META: Record<
-  CategoryKey,
+  string,
   { label: string; description: string; accent: string }
 > = {
   consultations: {
@@ -35,21 +33,17 @@ const CATEGORY_META: Record<
   },
 };
 
-// ⚠️ IMPORTANT : pas de type Next ici, on laisse `any` pour éviter l'erreur PageProps
-export default function CategoryPage({ params }: any) {
+export default function CategoryPage(props: any) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
 
-  const date: string = typeof params?.date === "string" ? params.date : "";
+  const params = (props as any).params || {};
+  const date: string = typeof params.date === "string" ? params.date : "";
   const category: string =
-    typeof params?.category === "string" ? params.category : "consultations";
+    typeof params.category === "string" ? params.category : "consultations";
 
-  const catKey: CategoryKey =
-    (["consultations", "bloc", "service", "garde"].includes(category)
-      ? category
-      : "consultations") as CategoryKey;
-
-  const meta = CATEGORY_META[catKey];
+  const meta =
+    CATEGORY_META[category] ?? CATEGORY_META["consultations"];
 
   // Auth
   useEffect(() => {
@@ -125,13 +119,12 @@ export default function CategoryPage({ params }: any) {
           <p className="text-xs text-slate-500">
             Ici on affichera les listes d&apos;activités à cocher pour cette
             catégorie (Matin / Après-midi / Garde) reliées à ton planning
-            hebdomadaire. Pour l’instant, cette page est prête niveau design et
-            navigation, et tu peux déjà l’utiliser comme base.
+            hebdomadaire.
           </p>
 
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-[11px] text-slate-500 space-y-1">
             <p className="font-medium text-slate-700">
-              Prochaine étape (facultative) :
+              Prochaine étape :
             </p>
             <ul className="list-disc list-inside space-y-1">
               <li>
