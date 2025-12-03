@@ -35,19 +35,15 @@ const CATEGORY_META: Record<
   },
 };
 
-// Typage très simple des props pour éviter l’erreur TS
-interface CategoryPageProps {
-  params: {
-    date: string; // "YYYY-MM-DD"
-    category: string; // on castera ensuite vers CategoryKey
-  };
-}
-
-export default function CategoryPage({ params }: CategoryPageProps) {
+// ⚠️ IMPORTANT : pas de type Next ici, on laisse `any` pour éviter l'erreur PageProps
+export default function CategoryPage({ params }: any) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
 
-  const { date, category } = params;
+  const date: string = typeof params?.date === "string" ? params.date : "";
+  const category: string =
+    typeof params?.category === "string" ? params.category : "consultations";
+
   const catKey: CategoryKey =
     (["consultations", "bloc", "service", "garde"].includes(category)
       ? category
@@ -69,7 +65,10 @@ export default function CategoryPage({ params }: CategoryPageProps) {
 
   if (!user) return null;
 
-  const jsDate = new Date(date + "T00:00:00");
+  const jsDate = date
+    ? new Date(date + "T00:00:00")
+    : new Date();
+
   const prettyDate = jsDate.toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "2-digit",
