@@ -13,16 +13,10 @@ import {
   startOfWeek,
   endOfWeek,
   eachDayOfInterval,
-  formatISO,
+  format,
 } from "date-fns";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-
-// Utilitaire sûr pour avoir un "YYYY-MM-DD"
-const isoDate = (d: Date) =>
-  formatISO(d, {
-    representation: "date",
-  });
 
 export default function HomeCalendar() {
   const router = useRouter();
@@ -56,11 +50,11 @@ export default function HomeCalendar() {
     year: "numeric",
   });
 
-  const todayIso = isoDate(new Date());
+  const todayIso = format(new Date(), "yyyy-MM-dd");
 
   const handleDayClick = (d: Date) => {
-    const iso = isoDate(d);
-    router.push(`/day/${encodeURIComponent(iso)}`);
+    const iso = format(d, "yyyy-MM-dd"); // évite le bug de fuseau horaire
+    router.push(`/day/${iso}`);
   };
 
   return (
@@ -109,7 +103,7 @@ export default function HomeCalendar() {
           {/* Grille de jours */}
           <div className="grid grid-cols-7 gap-y-2 text-sm">
             {days.map((d) => {
-              const iso = isoDate(d);
+              const iso = format(d, "yyyy-MM-dd");
               const isToday = iso === todayIso;
               const isCurrentMonth =
                 d.getMonth() === currentMonth.getMonth();
