@@ -5,86 +5,86 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, db } from "../../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 
-type Resident = {
+type Profile = {
   id: string;
   fullName: string;
   phone?: string;
+  role?: string;
   email?: string;
 };
 
 export default function ResidentsPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [residents, setResidents] = useState<Resident[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
         router.replace("/login");
-        return;
+      } else {
+        setUser(u);
       }
-      setUser(u);
-
-      const meRef = doc(db, "profiles", u.uid);
-      const meSnap = await getDoc(meRef);
-      const role = meSnap.exists() ? (meSnap.data() as any).role : "resident";
-      if (role !== "admin") {
-        router.replace("/week");
-        return;
-      }
-      setIsAdmin(true);
     });
     return () => unsub();
   }, [router]);
 
   useEffect(() => {
-    if (!user || !isAdmin) return;
-
+    if (!user) return;
     (async () => {
       setLoading(true);
-      const snap = await getDocs(collection(db, "profiles"));
-      const list: Resident[] = [];
-      snap.forEach((d) => {
-        const data = d.data() as any;
-        list.push({
-          id: d.id,
-          fullName: data.fullName || d.id,
-          phone: data.phone,
-          email: data.email,
+      try {
+        const snap = await getDocs(collection(db, "profiles"));
+        const list: Profile[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as any;
+          list.push({
+            id: d.id,
+            fullName: data.fullName || d.id,
+            phone: data.phone || "",
+            role: data.role || "resident",
+            email: data.email || "",
+          });
         });
-      });
-      list.sort((a, b) => a.fullName.localeCompare(b.fullName));
-      setResidents(list);
-      setLoading(false);
+        list.sort((a, b) => a.fullName.localeCompare(b.fullName));
+        setProfiles(list);
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, [user, isAdmin]);
+  }, [user]);
 
-  if (!user || !isAdmin) return null;
+  if (!user) return null;
 
   return (
-    <div className="py-6 space-y-4">
-      <header className="flex items-center justify-between">
+    <div className="py-5 space-y-4 max-w-3xl mx-auto px-4">
+      <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Fiches résidents
           </h1>
           <p className="text-sm text-slate-500">
-            Liste des résidents avec coordonnées.
+            Liste de tous les résidents du service.
           </p>
         </div>
         <div className="flex gap-2 text-sm">
           <button
-            className="rounded-full border px-3 py-1 hover:bg-slate-100"
-            onClick={() => router.push("/week")}
+            className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
+            onClick={() => router.push("/")}
           >
-            Retour au planning
+            Calendrier
           </button>
           <button
-            className="rounded-full border px-3 py-1 hover:bg-slate-100"
+            className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
+            onClick={() => router.push("/week")}
+          >
+            Ma semaine
+          </button>
+          <button
+            className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
             onClick={async () => {
               await signOut(auth);
               router.replace("/login");
@@ -95,42 +95,42 @@ export default function ResidentsPage() {
         </div>
       </header>
 
-      <div className="bg-sky-50/60 border border-sky-100 rounded-3xl p-4 shadow-sm">
+      <section className="bg-white rounded-2xl border shadow-sm p-4">
         {loading ? (
           <div className="text-sm text-slate-500">Chargement…</div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {residents.map((r) => (
-              <article
-                key={r.id}
-                className="rounded-2xl bg-white border border-slate-100 px-4 py-3 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
+          <div className="grid gap-3 sm:grid-cols-2">
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => router.push(`/residents/${p.id}`)}
+                className="text-left rounded-2xl border border-slate-100 bg-slate-50/60 p-3 shadow-[0_8px_16px_rgba(15,23,42,0.06)] hover:bg-slate-50 active:bg-slate-100 transition"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-semibold text-slate-900 text-sm">
-                    {r.fullName}
-                  </h2>
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-sky-500 text-white text-sm font-semibold">
+                    {p.fullName.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-semibold text-slate-900">
+                      {p.fullName}
+                    </div>
+                    {p.phone && (
+                      <div className="text-xs text-slate-600">
+                        📞 {p.phone}
+                      </div>
+                    )}
+                    {p.role && (
+                      <div className="text-[11px] uppercase text-slate-400">
+                        {p.role}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <dl className="mt-2 space-y-1 text-xs text-slate-600">
-                  {r.email && (
-                    <div className="flex justify-between gap-2">
-                      <dt className="font-medium text-slate-500">Email</dt>
-                      <dd className="text-right break-all">{r.email}</dd>
-                    </div>
-                  )}
-                  {r.phone && (
-                    <div className="flex justify-between gap-2">
-                      <dt className="font-medium text-slate-500">
-                        Téléphone
-                      </dt>
-                      <dd className="text-right">{r.phone}</dd>
-                    </div>
-                  )}
-                </dl>
-              </article>
+              </button>
             ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
