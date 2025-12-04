@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { auth, db } from "../../../../lib/firebase";
 import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -14,19 +14,23 @@ type Profile = {
   role?: "admin" | "resident";
 };
 
-export default function ResidentDetailPage(props: any) {
+export default function ResidentDetailPage() {
   const router = useRouter();
+  const params = useParams(); // ✅ récupère /residents/[id]
+  const rawId = params?.id;
 
-  // on récupère l'id dans l'URL sans typage compliqué
-  const params = (props as any).params || {};
-  const residentId: string =
-    typeof params.id === "string" ? params.id : "";
+  // pour être 100% safe (cas où id serait un array)
+  const residentId =
+    typeof rawId === "string"
+      ? rawId
+      : Array.isArray(rawId) && rawId.length > 0
+      ? rawId[0]
+      : "";
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
-  // Chargement du profil depuis Firestore
   useEffect(() => {
     if (!residentId) {
       setErr("Identifiant du résident manquant dans l'URL.");
@@ -80,7 +84,7 @@ export default function ResidentDetailPage(props: any) {
               className="px-4 py-1.5 rounded-full border text-xs sm:text-sm bg-white hover:bg-slate-50"
               onClick={() => router.push("/residents")}
             >
-              Retour liste
+              Calendrier
             </button>
             <button
               className="px-4 py-1.5 rounded-full border text-xs sm:text-sm bg-white hover:bg-slate-50"
@@ -127,13 +131,13 @@ export default function ResidentDetailPage(props: any) {
               </div>
 
               {profile.phone && (
-                <div className="text-sm text-slate-700 flex items-center gap-2 mt-2">
+                <div className="text-sm text-slate-700 flex items-center gap-2 mt-3">
                   <span>📞</span>
                   <span>{profile.phone}</span>
                 </div>
               )}
 
-              <p className="text-xs text-slate-500 mt-3">
+              <p className="text-xs text-slate-500 mt-4">
                 Tous les résidents peuvent consulter les fiches et les
                 activités de leurs collègues. Seuls les{" "}
                 <span className="font-semibold">admins</span> peuvent modifier
