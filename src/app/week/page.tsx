@@ -25,7 +25,7 @@ const PERIODES = [
 
 const JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 
-type Profile = { id: string; fullName: string };
+type Profile = { id: string; fullName: string; phone?: string };
 
 // petite fonction utilitaire pour être SÛR d'avoir toujours yyyy-MM-dd
 const isoDate = (d: Date) =>
@@ -70,7 +70,7 @@ export default function WeekPage() {
     return () => unsub();
   }, [router]);
 
-  // profil + liste des résidents (TOUJOURS tous les résidents pour l’affichage)
+  // profil + liste de TOUS les résidents
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -80,25 +80,30 @@ export default function WeekPage() {
         const profileSnap = await getDoc(profileRef);
 
         let admin = false;
-        let myFullName = "Moi";
+        let fullName = "Moi";
 
         if (profileSnap.exists()) {
           const data = profileSnap.data() as any;
           if (data.role === "admin") admin = true;
-          if (data.fullName) myFullName = data.fullName;
+          if (data.fullName) fullName = data.fullName;
         }
 
         setIsAdmin(admin);
 
+        // On récupère toutes les fiches résidents
         const allSnap = await getDocs(collection(db, "profiles"));
-        let profs: Profile[] = allSnap.docs.map((d) => ({
-          id: d.id,
-          fullName: (d.data() as any).fullName || d.id,
-        }));
+        let profs: Profile[] = allSnap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            fullName: data.fullName || d.id,
+            phone: data.phone || "",
+          };
+        });
 
-        // au cas où mon profil n'est pas dans la collection
+        // au cas où certains n'ont pas de profil mais sont connectés
         if (!profs.find((p) => p.id === user.uid)) {
-          profs.push({ id: user.uid, fullName: myFullName });
+          profs.push({ id: user.uid, fullName });
         }
 
         profs.sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -112,7 +117,7 @@ export default function WeekPage() {
     })();
   }, [user]);
 
-  // charge les activités cochées pour la semaine / résident choisi
+  // charge les activités cochées pour la semaine / résident sélectionné
   useEffect(() => {
     if (!user || !targetUserId) return;
     (async () => {
@@ -143,19 +148,15 @@ export default function WeekPage() {
     })();
   }, [user, targetUserId, weekDays]);
 
+  const canEdit = !!user && !!targetUserId && (isAdmin || targetUserId === user.uid);
+
   const toggle = (key: string) => {
+    if (!canEdit) return;
     setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const saveAll = async () => {
-    if (!user || !targetUserId) return;
-
-    // sécurité : un résident simple ne peut enregistrer que son propre planning
-    if (!isAdmin && targetUserId !== user.uid) {
-      setErr("Vous ne pouvez enregistrer que vos propres activités.");
-      return;
-    }
-
+    if (!user || !targetUserId || !canEdit) return;
     setLoading(true);
     setInfo("");
     setErr("");
@@ -226,8 +227,6 @@ export default function WeekPage() {
     setRefDate(isoDate(newRef));
   };
 
-  const canEdit = isAdmin || targetUserId === user.uid;
-
   return (
     <div className="py-5 space-y-4">
       {/* Header */}
@@ -249,7 +248,7 @@ export default function WeekPage() {
               className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
               onClick={() => router.push("/residents")}
             >
-              Résidents
+              Fiches résidents
             </button>
             <button
               className="px-3 py-1 rounded-full border text-xs sm:text-sm hover:bg-slate-100"
@@ -306,12 +305,24 @@ export default function WeekPage() {
             ))}
           </select>
 
-          {!isAdmin && (
-            <p className="mt-1 text-[11px] text-slate-500">
-              Vous pouvez consulter le planning de tous les résidents, mais
-              n&apos;enregistrer que vos propres activités.
-            </p>
-          )}
+          <p className="text-[11px] text-slate-500 mt-1">
+            {isAdmin
+              ? "En tant qu’admin, vous pouvez modifier les semaines de tous les résidents."
+              : targetUserId === user.uid
+              ? "Vous pouvez modifier uniquement votre propre semaine."
+              : "Lecture seule : vous consultez la semaine d’un autre résident."}
+          </p>
+
+          <button
+            className="mt-2 text-[11px] underline text-slate-600"
+            onClick={() => {
+              if (targetUserId) {
+                router.push(`/residents/${targetUserId}`);
+              }
+            }}
+          >
+            Ouvrir la fiche du résident
+          </button>
         </div>
       </div>
 
@@ -341,9 +352,6 @@ export default function WeekPage() {
                     <h2 className="font-semibold text-sm sm:text-base">
                       {jour} — {dateStr}
                     </h2>
-                    <span className="text-[11px] text-slate-400">
-                      {currentProfileName}
-                    </span>
                   </div>
                   {PERIODES.map((periode) => {
                     const acts = PLANNING[jour]?.[periode.key] || [];
@@ -359,14 +367,20 @@ export default function WeekPage() {
                             return (
                               <label
                                 key={k}
-                                className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs sm:text-sm bg-slate-50 hover:bg-slate-100 transition"
+                                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs sm:text-sm ${
+                                  canEdit
+                                    ? "bg-slate-50 hover:bg-slate-100"
+                                    : "bg-slate-50 opacity-70"
+                                } transition`}
                               >
                                 <input
                                   type="checkbox"
                                   className="h-4 w-4 rounded border-slate-400"
+                                  disabled={!canEdit || loading}
                                   checked={!!checked[k]}
-                                  onChange={() => toggle(k)}
-                                  disabled={!canEdit}
+                                  onChange={
+                                    canEdit ? () => toggle(k) : undefined
+                                  }
                                 />
                                 <span className="truncate">{act}</span>
                               </label>
@@ -379,19 +393,17 @@ export default function WeekPage() {
                 </section>
               );
             })}
-            <div className="pt-2">
-              <button
-                className="w-full sm:w-auto rounded-full bg-blue-600 text-white px-5 py-2 text-sm font-medium shadow-sm hover:bg-blue-700 disabled:opacity-50"
-                onClick={saveAll}
-                disabled={loading || !canEdit}
-              >
-                {loading
-                  ? "Enregistrement..."
-                  : canEdit
-                  ? "Enregistrer la semaine"
-                  : "Modification réservée à ce résident / admin"}
-              </button>
-            </div>
+            {canEdit && (
+              <div className="pt-2">
+                <button
+                  className="w-full sm:w-auto rounded-full bg-blue-600 text-white px-5 py-2 text-sm font-medium shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                  onClick={saveAll}
+                  disabled={loading}
+                >
+                  {loading ? "Enregistrement..." : "Enregistrer la semaine"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
